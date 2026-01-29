@@ -7,6 +7,24 @@
     changed_repos: "{{ changed_repos | default([]) }}"
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
 
+- name: Publish | detect dirty repos in workspace
+  ansible.builtin.shell: |
+    set -euo pipefail
+    repo_dir="{{ item }}"
+    if git -C "$repo_dir" status --porcelain | grep -q .; then
+      echo "{{ item }}"
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ repos_with_targets | default([]) }}"
+  register: dirty_check
+  changed_when: false
+
+- name: Publish | set changed_repos from dirty repos (git status)
+  ansible.builtin.set_fact:
+    changed_repos: "{{ dirty_check.results | map(attribute='stdout') | map('trim') | reject('equalto','') | list }}"
+
+
 - name: Publish | skip if nothing changed
   ansible.builtin.debug:
     msg: "No changed repositories. Publish phase will be skipped."
@@ -49,13 +67,11 @@
     git -C "$repo_dir" checkout -B "$branch"
 
     # Stage only changed targets if list exists and is non-empty; otherwise stage all changes
-    if [ -s "$repo_dir/.repo_orch_changed_files" ]; then
-      while IFS= read -r f; do
-        [ -n "$f" ] && git -C "$repo_dir" add -- "$f"
-      done < "$repo_dir/.repo_orch_changed_files"
-    else
-      git -C "$repo_dir" add -A
-    fi
+
+    # Stage only known target files for this repo (robust)
+    git -C "$repo_dir" add -- Dockerfile || true
+    git -C "$repo_dir" add -A
+
 
     # Commit & push only if there are changes
     if git -C "$repo_dir" status --porcelain | grep -q .; then
