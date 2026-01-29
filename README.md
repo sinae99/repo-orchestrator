@@ -124,6 +124,138 @@ Including:
 - `action.json`
 - `report.json`
 - `changed.json`
+
+
+------------------------
+## run :
+
+### 1) Clone
+```bash
+git clone <THIS_REPO_URL>
+cd reporker
+```
+
+### 2) Create a HamGit token
+In HamGit UI, create a Personal Access Token with scopes:
+- `api`
+- `write_repository`
+
+Store it locally:
+```bash
+mkdir -p glab
+printf '%s' "PASTE_TOKEN_HERE" > glab/hamgit-token
+chmod 600 glab/hamgit-token
+```
+
+### 3) Authenticate glab
+```bash
+cat glab/hamgit-token | glab auth login --hostname hamgit.ir --stdin
+glab api user --hostname hamgit.ir
+```
+
+### 4) Configure reporker
+Edit:
+```bash
+nano ansible/group_vars/all.yml
+```
+
+Set at least:
+- `hamgit.host` (example: `hamgit.ir`)
+- `hamgit.group_id` (example: `44436`)
+- `paths.workspace` and `paths.reports`
+- `git.branch_name` and `git.commit_message`
+- Action settings (patterns / parameters)
+
+### 5) Run phase-by-phase (recommended)
+Run from `ansible/`:
+```bash
+cd ansible
+```
+
+Phase 1 — discovery:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags discovery
+```
+
+Phase 2 — workspace:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags workspace
+```
+
+Phase 3 — scan:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags scan
+```
+
+Phase 4 — action:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags action
+```
+
+Phase 5 — report:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags report
+```
+
+Phase 6 — publish (branch/commit/push for changed repos only):
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags publish
+```
+
+### Run everything
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags discovery,workspace,scan,action,report,publish
+```
+
+---
+
+## Reports
+
+Reports are written to `ansible/reports/`:
+
+- `repos.json` — repository discovery output (raw API)
+- `scan.json` — scan results (targets found per repo)
+- `action.json` — Action execution summary
+- `report.json` — full run summary (aggregated)
+- `changed.json` — only changed repos (operator-focused)
+- `publish.json` — publish results (per repo command output)
+
+---
+
+## Re-running safely
+
+reporker is designed to be safe to re-run:
+- discovery regenerates `glab/repos.txt`
+- workspace syncs repos without recloning unnecessarily
+- action is idempotent (no duplicate edits)
+- publish only pushes when there is something to commit
+
+**Best practice:** use a unique branch name per run (include date/time) to avoid overwriting an existing branch.
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 - `publish.json`
 
 ---
