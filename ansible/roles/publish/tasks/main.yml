@@ -87,12 +87,11 @@
   register: publish_run
   when: changed_repos | length > 0
 
-- name: Publish | write publish.json (raw command outputs)
+- name: Publish | write publish.json (pretty)
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/publish.json"
     mode: "0644"
-    content: "{{ publish_run | to_json }}\n"
-  when: changed_repos | length > 0
+    content: "{{ publish_run | to_nice_json }}\n"
 
 - name: Publish | cleanup temporary staging files
   ansible.builtin.file:

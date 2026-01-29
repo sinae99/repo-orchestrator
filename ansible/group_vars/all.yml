@@ -26,10 +26,10 @@ paths:
 
 git:
   # Branch created in changed repositories
-  branch_name: "org/ansible/action-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  branch_name: "test-{{ lookup('pipe', 'date +%Y%m%d') }}"
 
   # Commit message for all changes
-  commit_message: "chore: apply action via reporker"
+  commit_message: "chore: apply action via reporker for test"
 
 
 # =========================
