@@ -1,94 +1,52 @@
-# reporker
 
-**reporker** is an Ansible-based repository orchestrator for applying a repeatable, auditable change (**Action**) across many repositories in a HamGit group.
+## REP-ORKER
 
-It:
-1) discovers repositories from a HamGit group (via `glab` API),
-2) clones/updates them locally,
-3) scans for target files,
-4) runs an idempotent Action,
-5) generates reports,
-6) optionally publishes changes as branches (commit + push).
+### an Ansible-based repository orchestrator 
 
-> **Safety-first:** reporker does **not** merge branches and does **not** modify default branches directly.
 
 ---
 
-## Who this is for
+#### REPORKER
 
-DevOps/platform teams who need a reliable “bulk operation” workflow across many repos:
-- enforcing a policy,
-- applying a migration,
-- updating CI templates,
-- modifying manifests,
-- running linters/fixers,
-- etc.
-
----
-
-## Core concept: the Action
-
-An **Action** is the only “business logic” part of reporker.
-
-**Definition**
-- A deterministic, idempotent operation that runs on discovered target files.
-- Replaceable: you can implement any Action without changing discovery/workspace/publish plumbing.
-
-**Example Action in this repo**
-This repository includes a **sample Action** used to validate the end-to-end flow:
-- scan for `Dockerfile*`
-- ensure a comment line exists:
-  - `# this line was added via ansible tool`
-
-This sample Action exists only as a demonstration.
-
-**Reference**
-A real Action example is the separate project **dockerfile-check** (mentioned here only as a reference example for an Action-style workflow).
-
----
-
-## What reporker does
-
-- Discovers repositories in a HamGit group using `glab`
-- Clones/updates repos locally via `git`
-- Scans local workspaces for target patterns
-- Executes an idempotent Action on those targets
-- Produces reports for audit and troubleshooting
-- Optionally creates a branch, commits, and pushes (changed repos only)
+- discovers --->  repositories in a Gitlab Instance like `Hamgit` group using `glab`
+- Clones ---> repositories locally
+- Scans  ---> repositories for configurable target patterns
+- Executes ---> an **Action** on discovered targets
+- Produces machine-readable and human-readable reports
+- creates **branches**, **commits**, and **pushes** changes
 
 ## What reporker does NOT do
 
-- ❌ does not auto-merge
-- ❌ does not open merge requests
-- ❌ does not modify default branches
-- ❌ does not require CI/CD changes in each repo
+- Does not merge branches
+- Does not modify default branches
+- Does not create merge requests automatically
+
+
+All irreversible steps are intentionally left to ---> human operators
 
 ---
 
-## Requirements
+## Prerequisites
 
-### Tools (local machine)
-Install on the machine that runs reporker:
+Required tools on the execution host:
 
 - `ansible`
 - `git`
 - `glab`
 - `jq`
 
-### Access
-- SSH keys configured for HamGit clone/push (`git@hamgit.ir:...`)
-- HamGit access token for discovery (**api + write_repository** scope)
-  - token is used by `glab api` only (not by git operations)
+Authentication requirements:
+
+- SSH keys configured for git clone/push
+- HamGit access token (used **only** for repository discovery via API)
 
 ---
 
-## Repository structure
+## Repo layout
 
 ```
 reporker/
 ├── ansible/
-│   ├── ansible.cfg
-│   ├── group_vars/all.yml
 │   ├── playbooks/run.yml
 │   ├── roles/
 │   │   ├── discovery/
@@ -97,21 +55,79 @@ reporker/
 │   │   ├── action/
 │   │   ├── report/
 │   │   └── publish/
-│   ├── reports/             # run outputs (generated)
-│   └── workspace/           # local clones (generated)
+│   ├── group_vars/all.yml
+│   ├── workspace/      # cloned repositories
+│   └── reports/        # generated outputs
 ├── glab/
-│   ├── hamgit-token         # token file (local secret; do not commit)
-│   └── repos.txt            # discovery output (generated)
-└── notes/
-    └── notes.md             # planning notes
+│   ├── hamgit-token
+│   └── repos.txt
+├── notes/              
+└── README.md
 ```
-
-> **Important:** `ansible/workspace/`, `ansible/reports/`, `glab/repos.txt`, and `glab/hamgit-token` are runtime artifacts.  
-> Do not commit secrets. Add local artifacts to `.gitignore`.
 
 ---
 
-## Quick start (user guide)
+## Conf
+
+All runtime configuration lives in:
+
+```
+ansible/group_vars/all.yml
+```
+
+---
+
+## Execution model ---> phases
+
+Each phase can be executed independently using Ansible tags.
+
+---
+
+## The Action
+
+The **Action** is the heart of reporker
+
+An Action is:
+- User-defined
+- Idempotent
+- Executed only on discovered targets
+- Fully replaceable without changing orchestration
+
+### Example Action used in this repository
+
+For this repository, an **Action** is implemented to validate this:
+
+> Ensure a specific comment line exists in all Dockerfiles.
+
+This Action:
+- scans for `Dockerfile*`
+- inserts a comment line if missing
+- makes no duplicate changes on re-runs
+
+
+### reference example
+
+another project that can be used as an action is **dockerfile-check** ----> (Asible inside Ansible)
+
+---
+
+## Reports
+
+All reports are written to:
+
+```
+ansible/reports/
+```
+
+Including:
+- `scan.json`
+- `action.json`
+- `report.json`
+- `changed.json`
+
+
+------------------------
+## run :
 
 ### 1) Clone
 ```bash
@@ -218,16 +234,28 @@ reporker is designed to be safe to re-run:
 
 ---
 
-## Customize / replace the Action
 
-To implement your own Action:
-- modify `ansible/roles/action/tasks/main.yml`
-- adjust scan patterns in `ansible/group_vars/all.yml` as needed
 
-All other roles remain reusable plumbing.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- `publish.json`
 
 ---
-
-## License
-
-Internal tool / project policy applies.
