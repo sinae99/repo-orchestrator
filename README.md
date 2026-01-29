@@ -1,28 +1,37 @@
 # reporker
 
-**reporker** is an Ansible-based repository orchestrator designed to operate on *many repositories at scale* in a safe, auditable, and repeatable way.
+an Ansible-based repository orchestrator 
 
-It discovers repositories from a HamGit group, materializes them locally, scans for targets, executes a user-defined **Action**, generates structured reports, and optionally publishes changes as isolated git branches.
+designed to operate on *many repositories at scale*
+
+It discovers repositories from a Gitlab Instance group, 
+
+clone them locally ----> scans for targets ---->
+
+executes an **Action** ----> generates structured reports ----> 
+
+publishes changes ----> as isolated git branches
+
 
 ---
 
-## What reporker does
+## REPORKER
 
-- Discovers repositories in a HamGit group using `glab`
+- Discovers repositories in a Gitlab Instance like `Hamgit` group using `glab`
 - Clones or updates repositories locally
 - Scans repositories for configurable target patterns
-- Executes an **idempotent Action** on discovered targets
+- Executes an **Action** on discovered targets
 - Produces machine-readable and human-readable reports
-- Optionally creates branches, commits, and pushes changes
+- creates branches, commits, and pushes changes
 
 ## What reporker does NOT do
 
 - ❌ Does not merge branches
 - ❌ Does not modify default branches directly
 - ❌ Does not create merge requests automatically
-- ❌ Does not assume anything about repository internals
 
-All irreversible steps are intentionally left to human operators.
+
+All irreversible steps are intentionally left to human operators
 
 ---
 
@@ -42,7 +51,7 @@ Authentication requirements:
 
 ---
 
-## Repository layout
+## Repo layout
 
 ```
 reporker/
@@ -61,13 +70,13 @@ reporker/
 ├── glab/
 │   ├── hamgit-token
 │   └── repos.txt
-├── notes/              # planning & design notes
+├── notes/              
 └── README.md
 ```
 
 ---
 
-## Configuration
+## Conf
 
 All runtime configuration lives in:
 
@@ -77,15 +86,15 @@ ansible/group_vars/all.yml
 
 ---
 
-## Execution model (phases)
+## Execution model ---> phases
 
 Each phase can be executed independently using Ansible tags.
 
 ---
 
-## The Action (core concept)
+## The Action
 
-The **Action** is the heart of reporker.
+The **Action** is the heart of reporker
 
 An Action is:
 - User-defined
@@ -95,7 +104,7 @@ An Action is:
 
 ### Example Action used in this repository
 
-For this repository, a **sample Action** is implemented to validate the full workflow:
+For this repository, an **Action** is implemented to validate the full workflow:
 
 > Ensure a specific comment line exists in all Dockerfiles.
 
@@ -104,13 +113,10 @@ This Action:
 - inserts a comment line if missing
 - makes no duplicate changes on re-runs
 
-This Action exists **only as a demonstration** of the orchestration flow.
 
-### Action reference example
+### reference example
 
-A real-world example of an Action-oriented project is **dockerfile-check**.
-
-In `reporker`, the Dockerfile line insertion is used purely as a sample Action to test the complete playbook flow.
+another project that can be used as an action is **dockerfile-check** ----> (Asible inside Ansible)
 
 ---
 
@@ -130,10 +136,3 @@ Including:
 - `publish.json`
 
 ---
-
-## Safety & idempotency
-
-- Safe to re-run
-- No default branches modified
-- Changes isolated to branches
-- Human-reviewed merges only
