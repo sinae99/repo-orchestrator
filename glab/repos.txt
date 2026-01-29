@@ -1,0 +1,4 @@
+git@hamgit.ir:arcaptcha-devops-project/deploy.git
+git@hamgit.ir:arcaptcha-devops-project/signup-service.git
+git@hamgit.ir:arcaptcha-devops-project/login-service.git
+git@hamgit.ir:arcaptcha-devops-project/api-gateway.git
