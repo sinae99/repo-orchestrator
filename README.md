@@ -182,11 +182,6 @@ Phase 2 — workspace:
 ansible-playbook -i localhost, playbooks/run.yml --tags workspace
 ```
 
-Phase 3 — scan:
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags scan
-```
-
 and other Phases
 
 ### Run everything
@@ -209,7 +204,7 @@ Reports are written to `ansible/reports/`:
 
 ---
 
-## Re-running safely
+## re-running
 
 reporker is designed to be safe to re-run:
 - discovery regenerates `glab/repos.txt`
@@ -221,28 +216,3 @@ reporker is designed to be safe to re-run:
 
 ---
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-- `publish.json`
-
----
