@@ -1,29 +1,19 @@
 # repo-orch — Execution Phases Notes
 
-This document describes the **planned execution phases** of `repo-orch`.
+## Phase 0 — preconditions
 
-It is a **design and planning reference**, not a user guide.
-The purpose is to make the orchestration flow explicit, auditable, and easy to reason about
-before implementation.
-
----
-
-## Phase 0 — Preconditions
-
-This phase defines the **inputs and environment assumptions** required before any automation runs.
-
-### Inputs (provided once)
+### Inputs
 
 - HamGit hostname  
   - Example: `hamgit.ir`
 
 - Target group identifier  
   - Group ID: `44436`  
-  - (or full group path, if preferred)
+  - (or full group path)
 
 - HamGit access token  
   - Used **only** for repository discovery via `glab api`
-  - Not used for git clone/push
+  - Not used for git clone or push
 
 - Local SSH keys  
   - Must already be configured
@@ -31,19 +21,14 @@ This phase defines the **inputs and environment assumptions** required before an
 
 - Workspace directory  
   - Local path where repositories will be cloned
-  - Example: `~/Desktop/glab/workspace`
-
-This phase performs **no actions**.  
-It exists only to validate assumptions.
+  - Example: `~/glab/workspace`
 
 ---
 
-## Phase 1 — Repository discovery (HamGit)
+## Phase 1 — Repository discovery
 
 **Tool:** `glab`  
-**Executor:** Ansible (local)
-
-### What happens
+**Executor:** Ansible
 
 - Ansible invokes:
   ```
@@ -52,35 +37,22 @@ It exists only to validate assumptions.
 - The raw API response is collected
 - Projects are filtered:
   - archived projects are excluded
-  - deletion-scheduled projects are excluded
 - SSH clone URLs are extracted
 
-### Outputs / artifacts
+### Artifacts
 
 - `repos.json`  
   - Raw API response (full project metadata)
 
 - `repos.txt`  
-  - One SSH clone URL per line
-  - Source of truth for subsequent phases
-
-- Optional: `repos.csv`  
-  - Human-friendly summary for review
-
-### Notes
-
-- This is the **only phase that depends on glab**
-- After this phase, the workflow is git-only
-- Repo discovery is intentionally explicit and inspectable
+  - One SSH clone URL per line  
 
 ---
 
-## Phase 2 — Clone or update repositories locally
+## Phase 2 — Clone repositories locally
 
 **Tool:** `git`  
-**Executor:** Ansible (local)
-
-### What happens
+**Executor:** Ansible
 
 For each repository listed in `repos.txt`:
 
@@ -89,92 +61,59 @@ For each repository listed in `repos.txt`:
 
 - If the repository already exists:
   - `git fetch --prune`
-  - reset to default branch (safe re-run behavior)
-
-### Why this phase exists before scanning
-
-- All scanning and actions operate on **real repository contents**
-- Avoids relying on API-based file inspection
-- Makes the workflow deterministic and debuggable
-
-### Outputs
-
-- Local repository directories in the workspace
-- Per-repository status:
-  - cloned
-  - updated
-  - failed (if applicable)
 
 ---
 
-## Phase 3 — Dockerfile discovery
+## Phase 3 — Target file discovery
 
-**Tool:** Ansible file discovery (or `find`)  
-**Scope:** Local filesystem
+**Tool:** Ansible file discovery (`find`)  
 
-### What happens
 
 For each cloned repository:
 
-- Search for files matching:
-  - `Dockerfile*`
-- Matching behavior (case-sensitive or insensitive) is configurable
+- Search for files relevant to the configured **action**
+- File patterns are action-defined and configurable
 
 ### Outputs
 
-- Per-repository list of Dockerfiles:
+- Per-repository discovery result:
   ```json
   {
     "repo": "example-repo",
-    "dockerfiles": [
-      "./Dockerfile",
-      "./docker/Dockerfile.prod"
+    "targets": [
+      "./path/to/file1",
+      "./path/to/file2"
     ]
   }
   ```
 
 - Combined summary:
-  - repositories with Dockerfiles
-  - repositories with **no Dockerfiles** (e.g. `deploy`)
+  - repositories with matching targets
+  - repositories with no matching targets
 
-### Notes
-
-- This phase scans **all repositories**
-- Repositories without Dockerfiles are still tracked
-- Discovery is separate from modification
+This phase scans **all repositories**
 
 ---
 
-## Phase 4 — Execute the action (idempotent)
+## Phase 4 — the action
 
-**Tool:** Ansible (file editing modules)
+**Tool:** Ansible  
+**Executor:** Local
 
-### Defined action (current)
+### Action
 
-- Add the following comment line to Dockerfiles:
-  ```
-  # this line was added via ansible tool
-  ```
+An **action** is a deterministic, idempotent operation applied to discovered targets
+inside each repository.
 
-### Idempotency rules
-
-- If the line already exists:
-  - no change
-- If the line does not exist:
-  - insert it (location configurable)
-
-Ansible naturally supports this via:
-- “ensure line exists” semantics
-- optional placement rules (e.g., after `FROM ...`)
+The orchestration layer does **not** define the action itself.
 
 ### Outputs
 
-- Per-Dockerfile:
+- Per-target:
   - changed: true / false
 
 - Per-repository:
   - changed: true / false  
-    (any Dockerfile changed → repo changed)
 
 ---
 
@@ -182,36 +121,29 @@ Ansible naturally supports this via:
 
 **Tool:** Ansible templating + JSON output
 
-### Required reports
+### reports
 
-#### Full scan report (global)
+#### Full scan report
 
 Includes:
 - repositories scanned
-- Dockerfiles discovered
-- per-repo change status
-- errors (if any)
+- targets discovered
+- per-repository change status
 
-#### Changed repositories report (actionable)
+
+#### Changed repositories report
 
 Includes:
 - repositories with changes
-- Dockerfiles modified
+- targets modified
 - branch name to be created/pushed
-
-### Purpose
-
-- Audit trail
-- Debugging
-- Confidence before review/merge
-- Historical record of bulk operations
 
 ---
 
-## Phase 6 — Publish changes (git)
+## Phase 6 — Push
 
 **Tool:** `git`  
-**Executor:** Ansible (local)
+**Executor:** Ansible
 
 ### What happens
 
@@ -221,32 +153,12 @@ For each repository where Phase 4 produced changes:
 2. Create a new branch  
    Example:
    ```
-   org/ansible/dockerfile-comment-20260128
+   org/ansible/action-20260128
    ```
-3. Stage modified Dockerfiles
+3. Stage modified files
 4. Commit with a consistent message
 5. Push the branch to origin
 
-### Skipped cases
-
-- Repositories with no Dockerfiles
-- Repositories where no changes occurred
-
-### Notes
-
-- No merge requests are created
-- No default branches are modified
-- Noise is minimized (changed-only push)
-
----
-
-## Why this workflow is clean and safe
-
-- No automated merging
-- Idempotent changes prevent duplication
-- Git history remains the source of truth
-- Reports provide full visibility
-- Re-running the workflow is safe
 
 ---
 
@@ -257,13 +169,9 @@ After a successful run:
 - Local workspace with cloned repositories
 - `repos.txt`
 - `report.json` and `report.md`
-- Remote branches pushed **only** for changed repositories:
-  - `login-service`
-  - `signup-service`
-  - `api-gateway`
-- No changes pushed for repositories like `deploy`
+- Remote branches pushed 
 
-Human operators open merge requests manually when ready.
+Human operators open merge requests manually when ready
 
 ---
 
@@ -281,6 +189,6 @@ Human operators open merge requests manually when ready.
 
 - **ansible**
   - Orchestration
-  - Idempotent action execution
+  - Action execution (idempotent)
   - Conditional logic
   - Reporting
