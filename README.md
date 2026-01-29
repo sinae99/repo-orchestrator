@@ -26,7 +26,7 @@ All irreversible steps are intentionally left to ---> human operators
 
 ---
 
-## Prerequisites
+## pre-requisites
 
 Required tools on the execution host:
 
@@ -111,7 +111,7 @@ another project that can be used as an action is **dockerfile-check** ----> (Asi
 
 ---
 
-## Reports
+## reports
 
 All reports are written to:
 
@@ -166,7 +166,7 @@ Set at least:
 - `git.branch_name` and `git.commit_message`
 - Action settings (patterns / parameters)
 
-### 5) Run phase-by-phase (recommended)
+### 5) Run 
 Run from `ansible/`:
 ```bash
 cd ansible
@@ -187,20 +187,7 @@ Phase 3 — scan:
 ansible-playbook -i localhost, playbooks/run.yml --tags scan
 ```
 
-Phase 4 — action:
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags action
-```
-
-Phase 5 — report:
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags report
-```
-
-Phase 6 — publish (branch/commit/push for changed repos only):
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags publish
-```
+and other Phases
 
 ### Run everything
 ```bash
