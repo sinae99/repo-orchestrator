@@ -1,0 +1,77 @@
+---
+# Phase 3: Target file discovery
+
+- name: Scan | ensure workspace exists
+  ansible.builtin.stat:
+    path: "{{ paths.workspace }}"
+  register: workspace_stat
+
+- name: Scan | fail if workspace is missing
+  ansible.builtin.fail:
+    msg: "Workspace directory not found at {{ paths.workspace }}. Run the workspace role first."
+  when: not workspace_stat.stat.exists
+
+- name: Scan | list repositories in workspace
+  ansible.builtin.find:
+    paths: "{{ paths.workspace }}"
+    file_type: directory
+    depth: 1
+  register: repo_dirs
+
+- name: Scan | build repo list
+  ansible.builtin.set_fact:
+    repos: "{{ repo_dirs.files | map(attribute='path') | list }}"
+
+- name: Scan | fail if no repos exist in workspace
+  ansible.builtin.fail:
+    msg: "No repositories found in workspace ({{ paths.workspace }})."
+  when: repos | length == 0
+
+# Find targets per repo based on action.target_patterns (e.g., Dockerfile*)
+- name: Scan | find targets in each repo
+  ansible.builtin.find:
+    paths: "{{ item }}"
+    patterns: "{{ action.target_patterns }}"
+    recurse: true
+    file_type: file
+  loop: "{{ repos }}"
+  register: target_find_results
+
+# Build mapping: repo_path -> [file paths]
+- name: Scan | build targets_by_repo map
+  ansible.builtin.set_fact:
+    targets_by_repo: >-
+      {{
+        dict(
+          target_find_results.results
+          | map(attribute='item')
+          | zip(
+              target_find_results.results
+              | map(attribute='files')
+              | map('map', attribute='path')
+              | map('list')
+            )
+        )
+      }}
+
+- name: Scan | derive repos_with_targets and repos_without_targets
+  ansible.builtin.set_fact:
+    repos_with_targets: "{{ targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
+    repos_without_targets: "{{ targets_by_repo | dict2items | selectattr('value', 'equalto', []) | map(attribute='key') | list }}"
+
+
+- name: Scan | write scan report (JSON)
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/scan.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "workspace": paths.workspace,
+          "target_patterns": action.target_patterns,
+          "repos_total": repos | length,
+          "repos_with_targets": repos_with_targets | length,
+          "repos_without_targets": repos_without_targets | length,
+          "targets_by_repo": targets_by_repo
+        } | to_nice_json
+      }}

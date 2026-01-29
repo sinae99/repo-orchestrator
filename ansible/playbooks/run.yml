@@ -1,0 +1,27 @@
+---
+- name: reporker
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars_files:
+    - ../group_vars/all.yml
+
+  roles:
+    - role: discovery
+      tags: [discovery]
+
+    - role: workspace
+      tags: [workspace]
+
+    - role: scan
+      tags: [scan]
+
+    - role: action
+      tags: [action]
+
+    - role: report
+      tags: [report]
+
+    - role: publish
+      tags: [publish]

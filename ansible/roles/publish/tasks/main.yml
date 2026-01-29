@@ -1,0 +1,91 @@
+---
+# Phase 6: Publish changes (branch -> commit -> push)
+# Only runs for repositories that changed in Phase 4.
+
+- name: Publish | set safe defaults
+  ansible.builtin.set_fact:
+    changed_repos: "{{ changed_repos | default([]) }}"
+    changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
+
+- name: Publish | skip if nothing changed
+  ansible.builtin.debug:
+    msg: "No changed repositories. Publish phase will be skipped."
+  when: changed_repos | length == 0
+
+# Write per-repo file lists so we can stage only those files without complex inline code
+- name: Publish | write changed file list per repo (for staging)
+  ansible.builtin.copy:
+    dest: "{{ item }}/.repo_orch_changed_files"
+    mode: "0644"
+    content: |
+      {% for f in (changed_targets_by_repo[item] | default([])) %}
+      {{ f }}
+      {% endfor %}
+  loop: "{{ changed_repos }}"
+  when: changed_repos | length > 0
+
+- name: Publish | branch, commit, and push per changed repo
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    repo_dir="{{ item }}"
+    branch="{{ git.branch_name }}"
+
+    echo "==> REPO: $repo_dir"
+
+    # Determine default branch from origin
+    default_branch="$(git -C "$repo_dir" remote show origin | sed -n '/HEAD branch/s/.*: //p')"
+    if [ -z "$default_branch" ]; then
+      echo "ERROR: Could not determine default branch for $repo_dir"
+      exit 2
+    fi
+    echo "Default branch: $default_branch"
+
+    # Sync default branch
+    git -C "$repo_dir" checkout "$default_branch"
+    git -C "$repo_dir" pull --ff-only
+
+    # Create/reset branch from default
+    git -C "$repo_dir" checkout -B "$branch"
+
+    # Stage only changed targets if list exists and is non-empty; otherwise stage all changes
+    if [ -s "$repo_dir/.repo_orch_changed_files" ]; then
+      while IFS= read -r f; do
+        [ -n "$f" ] && git -C "$repo_dir" add -- "$f"
+      done < "$repo_dir/.repo_orch_changed_files"
+    else
+      git -C "$repo_dir" add -A
+    fi
+
+    # Commit & push only if there are changes
+    if git -C "$repo_dir" status --porcelain | grep -q .; then
+      git -C "$repo_dir" commit -m "{{ git.commit_message }}"
+      git -C "$repo_dir" push -u origin "$branch"
+      echo "PUSHED: $branch"
+    else
+      echo "NOOP: nothing to commit"
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ changed_repos }}"
+  register: publish_run
+  when: changed_repos | length > 0
+
+- name: Publish | write publish.json (raw command outputs)
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/publish.json"
+    mode: "0644"
+    content: "{{ publish_run | to_json }}\n"
+  when: changed_repos | length > 0
+
+- name: Publish | cleanup temporary staging files
+  ansible.builtin.file:
+    path: "{{ item }}/.repo_orch_changed_files"
+    state: absent
+  loop: "{{ changed_repos }}"
+  when: changed_repos | length > 0
+
+- name: Publish | debug publish completion
+  ansible.builtin.debug:
+    msg: "Publish phase finished. See {{ paths.reports }}/publish.json"
+  when: changed_repos | length > 0

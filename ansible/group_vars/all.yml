@@ -1,0 +1,53 @@
+# =========================
+# Global configuration
+# =========================
+
+# GitLab instance
+hamgit:
+  host: hamgit.ir
+  group_id: 44436
+
+  # Token file used ONLY for glab API calls
+  token_file: "{{ playbook_dir }}/../../glab/hamgit-token"
+
+
+# =========================
+# Workspace & outputs
+# =========================
+
+paths:
+  workspace: "{{ playbook_dir }}/../workspace"
+  reports: "{{ playbook_dir }}/../reports"
+
+
+# =========================
+# Git behavior
+# =========================
+
+git:
+  # Branch created in changed repositories
+  branch_name: "org/ansible/action-{{ lookup('pipe', 'date +%Y%m%d') }}"
+
+  # Commit message for all changes
+  commit_message: "chore: apply action via reporker"
+
+
+# =========================
+# Action definition
+# =========================
+
+action:
+
+  target_patterns:
+    - "Dockerfile*"
+
+  # Example action parameter (used by the action role)
+  ensure_line: "# this line was added via ansible tool"
+
+
+# =========================
+# Execution behavior
+# =========================
+
+execution:
+  fail_fast: true

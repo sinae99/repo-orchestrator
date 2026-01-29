@@ -1,0 +1,55 @@
+---
+# Phase 2: Clone/update repositories locally into the workspace
+
+- name: Workspace | verify repos.txt exists
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../glab/repos.txt"
+  register: repos_txt_stat
+
+- name: Workspace | fail if repos.txt is missing
+  ansible.builtin.fail:
+    msg: "Missing glab/repos.txt. Run the discovery role first (playbook run.yml)."
+  when: not repos_txt_stat.stat.exists
+
+- name: Workspace | read repos.txt
+  ansible.builtin.slurp:
+    path: "{{ playbook_dir }}/../../glab/repos.txt"
+  register: repos_txt_slurp
+
+- name: Workspace | parse repo URLs
+  ansible.builtin.set_fact:
+    repo_urls: >-
+      {{
+        (repos_txt_slurp.content | b64decode).splitlines()
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+
+- name: Workspace | show repo URLs count
+  ansible.builtin.debug:
+    msg: "Repo URLs loaded: {{ repo_urls | length }}"
+
+# For each repo, create a local folder name:
+# git@hamgit.ir:group/name.git  -> name
+- name: Workspace | clone or update repos
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    url="{{ item }}"
+    repo_name="$(basename "$url")"
+    repo_name="${repo_name%.git}"
+    dest="{{ paths.workspace }}/$repo_name"
+
+    if [ -d "$dest/.git" ]; then
+      echo "==> UPDATE $repo_name"
+      git -C "$dest" fetch --all --prune
+    else
+      echo "==> CLONE  $repo_name"
+      git clone "$url" "$dest"
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ repo_urls }}"
+  register: workspace_ops
+  changed_when: "'==> CLONE' in workspace_ops.stdout"

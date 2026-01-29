@@ -1,0 +1,72 @@
+---
+# Phase 4: Execute the action 
+
+- name: Action | ensure targets_by_repo exists
+  ansible.builtin.assert:
+    that:
+      - targets_by_repo is defined
+    fail_msg: "targets_by_repo not found. Run scan role before action role."
+
+# Flatten all targets into a single list for lineinfile
+- name: Action | build flat target list
+  ansible.builtin.set_fact:
+    all_targets: "{{ targets_by_repo.values() | list | flatten }}"
+
+- name: Action | debug target count
+  ansible.builtin.debug:
+    msg: "Total targets discovered: {{ all_targets | length }}"
+
+# If no targets at all, do nothing
+- name: Action | skip when no targets exist
+  ansible.builtin.debug:
+    msg: "No targets found across repositories. Action will not run."
+  when: all_targets | length == 0
+
+# Apply action to each target file (idempotent)
+- name: Action | ensure action line exists in each target file
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    line: "{{ action.ensure_line }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ all_targets }}"
+  register: line_results
+  when: all_targets | length > 0
+
+# Build a set of changed files from lineinfile results
+- name: Action | collect changed files
+  ansible.builtin.set_fact:
+    changed_files: "{{ (line_results.results | selectattr('changed', 'equalto', true) | map(attribute='item') | list) if (all_targets | length > 0) else [] }}"
+
+# Map changes back to repos
+- name: Action | build changed_targets_by_repo map
+  ansible.builtin.set_fact:
+    changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) | combine({ repo: (targets_by_repo[repo] | intersect(changed_files)) }) }}"
+  loop: "{{ repos_with_targets }}"
+  loop_control:
+    loop_var: repo
+
+- name: Action | derive changed_repos
+  ansible.builtin.set_fact:
+    changed_repos: "{{ changed_targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
+
+- name: Action | write action report (JSON)
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/action.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": {
+            "ensure_line": action.ensure_line,
+            "target_patterns": action.target_patterns
+          },
+          "summary": {
+            "total_targets": all_targets | length,
+            "changed_files_count": changed_files | length,
+            "changed_repos_count": changed_repos | length
+          },
+          "changed_targets_by_repo": changed_targets_by_repo
+        } | to_nice_json
+      }}
+

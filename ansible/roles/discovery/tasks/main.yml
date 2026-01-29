@@ -1,0 +1,80 @@
+---
+# Phase 0/1: Preconditions + Repository discovery
+
+- name: Preflight | verify glab is installed
+  ansible.builtin.command: glab --version
+  register: glab_version
+  changed_when: false
+
+- name: Preflight | verify git is installed
+  ansible.builtin.command: git --version
+  register: git_version
+  changed_when: false
+
+- name: Preflight | verify jq is installed
+  ansible.builtin.command: jq --version
+  register: jq_version
+  changed_when: false
+
+- name: Preflight | verify HamGit token file exists
+  ansible.builtin.stat:
+    path: "{{ hamgit.token_file }}"
+  register: hamgit_token_stat
+
+- name: Preflight | fail if token file is missing
+  ansible.builtin.fail:
+    msg: "Missing token file at {{ hamgit.token_file }} (expected relative to ansible/ directory)."
+  when: not hamgit_token_stat.stat.exists
+
+- name: Ensure output directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ paths.reports }}"
+    - "{{ paths.workspace }}"
+
+- name: Discovery | fetch group projects via glab API (raw JSON)
+  ansible.builtin.command: >
+    glab api "groups/{{ hamgit.group_id }}/projects?per_page=100"
+    --hostname {{ hamgit.host }}
+    --paginate
+  register: glab_projects
+  changed_when: false
+
+- name: Discovery | write repos.json (raw API output)
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/repos.json"
+    content: "{{ glab_projects.stdout }}\n"
+    mode: "0644"
+
+# Filter criteria:
+# - archived == false
+# - exclude path_with_namespace containing "deletion_scheduled"
+
+- name: Discovery | write repos.txt (SSH clone URLs)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    jq -r '
+      .[]
+      | select(.archived == false)
+      | select((.path_with_namespace | tostring) | contains("deletion_scheduled") | not)
+      | .ssh_url_to_repo
+    ' "{{ paths.reports }}/repos.json" > "{{ playbook_dir }}/../../glab/repos.txt"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Discovery | show discovered repo count
+  ansible.builtin.shell: |
+    set -euo pipefail
+    wc -l "{{ playbook_dir }}/../../glab/repos.txt" | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: repo_count
+  changed_when: false
+
+- name: Discovery | debug repo count
+  ansible.builtin.debug:
+    msg: "Discovered {{ repo_count.stdout }} repositories. Output: glab/repos.txt"

@@ -1,0 +1,76 @@
+---
+# Phase 5: Reporting
+
+- name: Report | ensure reports directory exists
+  ansible.builtin.file:
+    path: "{{ paths.reports }}"
+    state: directory
+    mode: "0755"
+
+- name: Report | assert required facts exist (best effort)
+  ansible.builtin.assert:
+    that:
+      - repos is defined
+      - targets_by_repo is defined
+    fail_msg: "Missing required data. Ensure discovery/workspace/scan ran before report."
+
+- name: Report | set safe defaults for optional facts
+  ansible.builtin.set_fact:
+    repos_with_targets: "{{ repos_with_targets | default([]) }}"
+    repos_without_targets: "{{ repos_without_targets | default([]) }}"
+    changed_repos: "{{ changed_repos | default([]) }}"
+    changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
+
+- name: Report | write report.json (full run summary)
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/report.json"
+    mode: "0644"
+    content: |
+      {
+        "hamgit": {
+          "host": {{ hamgit.host | to_json }},
+          "group_id": {{ hamgit.group_id | to_json }}
+        },
+        "paths": {
+          "workspace": {{ paths.workspace | to_json }},
+          "reports": {{ paths.reports | to_json }}
+        },
+        "git": {
+          "branch_name": {{ git.branch_name | to_json }},
+          "commit_message": {{ git.commit_message | to_json }}
+        },
+        "action": {
+          "target_patterns": {{ action.target_patterns | to_json }},
+          "ensure_line": {{ action.ensure_line | to_json }}
+        },
+        "summary": {
+          "repos_total": {{ repos | length }},
+          "repos_with_targets": {{ repos_with_targets | length }},
+          "repos_without_targets": {{ repos_without_targets | length }},
+          "repos_changed": {{ changed_repos | length }}
+        },
+        "targets_by_repo": {{ targets_by_repo | to_json }},
+        "changed_targets_by_repo": {{ changed_targets_by_repo | to_json }}
+      }
+
+- name: Report | write changed.json (only changed repos)
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/changed.json"
+    mode: "0644"
+    content: |
+      {
+        "git": {
+          "branch_name": {{ git.branch_name | to_json }},
+          "commit_message": {{ git.commit_message | to_json }}
+        },
+        "repos_changed": {{ changed_repos | to_json }},
+        "changed_targets_by_repo": {{ changed_targets_by_repo | to_json }}
+      }
+
+- name: Report | print summary
+  ansible.builtin.debug:
+    msg:
+      - "Repos total: {{ repos | length }}"
+      - "Repos with targets: {{ repos_with_targets | length }}"
+      - "Repos changed: {{ changed_repos | length }}"
+      - "Reports written to: {{ paths.reports }}"
