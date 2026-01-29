@@ -1,37 +1,27 @@
 # reporker
 
-an Ansible-based repository orchestrator 
-
-designed to operate on *many repositories at scale*
-
-It discovers repositories from a Gitlab Instance group, 
-
-clone them locally ----> scans for targets ---->
-
-executes an **Action** ----> generates structured reports ----> 
-
-publishes changes ----> as isolated git branches
+### an Ansible-based repository orchestrator 
 
 
 ---
 
 ## REPORKER
 
-- Discovers repositories in a Gitlab Instance like `Hamgit` group using `glab`
-- Clones or updates repositories locally
-- Scans repositories for configurable target patterns
-- Executes an **Action** on discovered targets
+- discovers --->  repositories in a Gitlab Instance like `Hamgit` group using `glab`
+- Clones ---> repositories locally
+- Scans  ---> repositories for configurable target patterns
+- Executes ---> an **Action** on discovered targets
 - Produces machine-readable and human-readable reports
-- creates branches, commits, and pushes changes
+- creates **branches**, **commits**, and **pushes** changes
 
 ## What reporker does NOT do
 
-- ❌ Does not merge branches
-- ❌ Does not modify default branches directly
-- ❌ Does not create merge requests automatically
+- Does not merge branches
+- Does not modify default branches
+- Does not create merge requests automatically
 
 
-All irreversible steps are intentionally left to human operators
+All irreversible steps are intentionally left to ---> human operators
 
 ---
 
@@ -104,7 +94,7 @@ An Action is:
 
 ### Example Action used in this repository
 
-For this repository, an **Action** is implemented to validate the full workflow:
+For this repository, an **Action** is implemented to validate this:
 
 > Ensure a specific comment line exists in all Dockerfiles.
 
