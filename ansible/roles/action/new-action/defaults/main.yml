@@ -1,0 +1,9 @@
+action:
+  name: "ensure-nonroot-user"
+  user_name: "app"
+  user_uid: 10001
+  marker: "# reporker: ensure-nonroot-user"
+
+paths:
+  reports: "{{ playbook_dir }}/../reports"
+

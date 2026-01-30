@@ -1,0 +1,35 @@
+---
+# We will build:
+# changed_targets_by_repo = { repo_dir: [dockerfile_paths...] }
+# results_by_target = [ {repo_dir, dockerfile, status, reason}, ... ]
+
+- name: Init action state
+  set_fact:
+    changed_targets_by_repo: {}
+    results_by_target: []
+
+- name: Loop repos with targets
+  loop: "{{ targets_by_repo | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  vars:
+    repo_dir: "{{ item.key }}"
+    repo_targets: "{{ item.value | default([]) }}"
+  block:
+    - name: Ensure repo key exists in changed_targets_by_repo
+      set_fact:
+        changed_targets_by_repo: "{{ changed_targets_by_repo | combine({repo_dir: (changed_targets_by_repo[repo_dir] | default([]))}) }}"
+
+    - name: Loop dockerfiles in repo
+      loop: "{{ repo_targets }}"
+      loop_control:
+        label: "{{ item }}"
+      vars:
+        dockerfile_path: "{{ item }}"
+      block:
+        # TODO (next step): read dockerfile, determine if USER exists in final stage,
+        # and if missing -> patch + append dockerfile_path to changed_targets_by_repo[repo_dir]
+        - name: Placeholder - no-op for now
+          debug:
+            msg: "TODO: evaluate and patch {{ dockerfile_path }}"
+

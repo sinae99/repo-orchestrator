@@ -1,0 +1,15 @@
+---
+- name: Read scan.json
+  slurp:
+    src: "{{ paths.reports }}/scan.json"
+  register: scan_raw
+
+- name: Parse scan.json
+  set_fact:
+    scan_data: "{{ scan_raw.content | b64decode | from_json }}"
+
+- name: Extract targets_by_repo
+  set_fact:
+    targets_by_repo: "{{ scan_data.targets_by_repo | default({}) }}"
+    total_targets: "{{ (scan_data.targets_by_repo | default({}) | dict2items | map(attribute='value') | flatten | list | length) }}"
+

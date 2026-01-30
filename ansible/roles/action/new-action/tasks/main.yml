@@ -1,0 +1,17 @@
+---
+# Action Role: ensure-nonroot-user
+# Inputs: reports/scan.json (targets_by_repo)
+# Outputs: reports/action.json + reports/changed.json
+
+- name: Load scan.json
+  include_tasks: load_scan.yml
+
+- name: Apply action to dockerfiles (from scan targets)
+  include_tasks: apply.yml
+
+- name: Compute changed repos (git status)
+  include_tasks: detect_changed.yml
+
+- name: Write action reports (action.json + changed.json)
+  include_tasks: write_reports.yml
+

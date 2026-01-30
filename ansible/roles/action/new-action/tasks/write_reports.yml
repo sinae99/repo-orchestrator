@@ -1,0 +1,43 @@
+---
+- name: Compute summary counts
+  set_fact:
+    changed_files_count: "{{ changed_targets_by_repo | dict2items | map(attribute='value') | flatten | list | length }}"
+    changed_repos_count: "{{ repos_changed | length }}"
+
+- name: Write action.json
+  copy:
+    dest: "{{ paths.reports }}/action.json"
+    content: |
+      {{
+        {
+          "action": {
+            "name": action.name,
+            "user_name": action.user_name,
+            "user_uid": action.user_uid,
+            "marker": action.marker
+          },
+          "changed_targets_by_repo": changed_targets_by_repo,
+          "summary": {
+            "total_targets": total_targets,
+            "changed_files_count": changed_files_count,
+            "changed_repos_count": changed_repos_count
+          },
+          "results_by_target": results_by_target
+        } | to_nice_json
+      }}
+
+- name: Write changed.json (publish input)
+  copy:
+    dest: "{{ paths.reports }}/changed.json"
+    content: |
+      {{
+        {
+          "changed_targets_by_repo": changed_targets_by_repo,
+          "repos_changed": repos_changed,
+          "git": {
+            "branch_name": (git.branch_name | default("")),
+            "commit_message": (git.commit_message | default(""))
+          }
+        } | to_nice_json
+      }}
+

@@ -1,0 +1,32 @@
+---
+# repos_changed should be a list of repo_dir values where git has changes
+- name: Init repos_changed
+  set_fact:
+    repos_changed: []
+
+- name: Check git status for each repo in targets_by_repo
+  loop: "{{ targets_by_repo.keys() | list }}"
+  loop_control:
+    label: "{{ item }}"
+  vars:
+    repo_dir: "{{ item }}"
+  shell: |
+    set -e
+    cd "{{ repo_dir }}"
+    git status --porcelain
+  args:
+    executable: /bin/bash
+  register: git_status
+  changed_when: false
+  failed_when: false
+
+- name: Build repos_changed list
+  set_fact:
+    repos_changed: >-
+      {{
+        repos_changed + [item.item]
+        if (item.stdout | trim | length > 0)
+        else repos_changed
+      }}
+  loop: "{{ git_status.results }}"
+
