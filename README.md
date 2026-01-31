@@ -129,6 +129,98 @@ Including:
 ------------------------
 ## run :
 
+## there is 2 way to use this playbook:
+
+- ***automated script***
+
+- ***manually***
+
+## 1 - Run using the helper script (recommended)
+
+
+### What the script does
+`scripts/run.sh`:
+- loads inputs from `scripts/envs.txt`
+- generates `ansible/group_vars/all.yml`
+- runs the Ansible playbook with selected phases (tags)
+- prints a small execution summary
+- writes reports to `ansible/reports/`
+
+---
+
+### Prepare HamGit token
+
+Create a Personal Access Token in HamGit UI with scopes:
+- `api`
+- `write_repository`
+
+Store it locally:
+
+```bash
+mkdir -p glab
+printf '%s' "PASTE_TOKEN_HERE" > glab/hamgit-token
+chmod 600 glab/hamgit-token
+```
+
+---
+
+### Configure REPORKER (one file)
+
+Copy and edit the environment file:
+
+```bash
+cp scripts/envs.example.txt scripts/envs.txt
+nano scripts/envs.txt
+```
+
+Common values to edit:
+- `HAMGIT_HOST`
+- `HAMGIT_GROUP_ID`
+- `BRANCH_NAME`
+- `COMMIT_MESSAGE`
+- `TARGET_PATTERNS`
+- `ENSURE_LINE`
+- `TAGS`
+
+> Do **not** edit `ansible/group_vars/all.yml` manually when using the script.
+
+---
+
+### First run (safe / read-only)
+
+Run only discovery, clone, and scan phases:
+
+```bash
+# inside scripts/envs.txt
+TAGS="discovery,workspace,scan"
+```
+
+Run:
+
+```bash
+bash scripts/run.sh
+```
+
+### FULL
+```bash
+# inside scripts/envs.txt
+TAGS="discovery,workspace,scan,action,report,publish"
+```
+
+Run:
+
+```bash
+bash scripts/run.sh
+```
+
+---
+
+
+
+
+## 2 - Run manually
+
+
 ### 1) Clone
 ```bash
 git clone <THIS_REPO_URL>
