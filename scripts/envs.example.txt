@@ -1,0 +1,38 @@
+# =========================
+# REPORKER inputs
+# =========================
+
+# GitLab instance
+HAMGIT_HOST="hamgit.ir"
+HAMGIT_GROUP_ID="44436"
+
+# Token file used ONLY for glab API calls (relative to repo root)
+HAMGIT_TOKEN_REL="glab/hamgit-token"
+
+# If 1, run.sh will try to login glab using token if not logged in
+GLAB_AUTO_LOGIN="1"
+
+# Workspace & reports:
+# 0 = keep your current playbook_dir-based defaults (recommended)
+# 1 = override with custom absolute/relative paths below
+OVERRIDE_PATHS="0"
+WORKSPACE_PATH="ansible/workspace"
+REPORTS_PATH="ansible/reports"
+
+# Git behavior
+BRANCH_NAME="reporker-$(date +%Y%m%d)"
+COMMIT_MESSAGE="chore: apply action via reporker for test in new branch"
+
+# Action
+TARGET_PATTERNS="Dockerfile*"
+ENSURE_LINE="# this is the test"
+
+# Execution behavior
+FAIL_FAST="true"
+
+# Which phases/tags to run
+TAGS="discovery,workspace,scan,action,report,publish"
+
+# Verbose ansible output
+VERBOSE="0"
+
