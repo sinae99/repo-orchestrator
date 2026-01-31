@@ -39,10 +39,10 @@ git:
 action:
 
   target_patterns:
-    - "Dockerfile*"
+    - "*Dockerfile*"
 
   # Example action parameter here is this line: (used by the action role)
-  ensure_line: "# this is the test"
+  ensure_line: "# action save and load"
 
 
 # =========================

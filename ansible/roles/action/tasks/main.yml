@@ -1,5 +1,41 @@
 ---
-# Phase 4: Execute the action 
+# Phase 4: Execute the action
+
+# -------------------------
+# Load scan report (so action can run standalone)
+# -------------------------
+
+- name: Action | check scan report exists
+  ansible.builtin.stat:
+    path: "{{ paths.reports }}/scan.json"
+  register: scan_report_stat
+
+- name: Action | fail if scan report missing
+  ansible.builtin.fail:
+    msg: "Scan report not found at {{ paths.reports }}/scan.json. Run scan stage first."
+  when: not scan_report_stat.stat.exists
+
+- name: Action | load scan report JSON
+  ansible.builtin.include_vars:
+    file: "{{ paths.reports }}/scan.json"
+    name: scan_report
+
+# Bring values into the variables your action already expects
+- name: Action | set targets_by_repo and repos_with_targets from scan report
+  ansible.builtin.set_fact:
+    targets_by_repo: "{{ scan_report.targets_by_repo | default({}) }}"
+    repos_with_targets: >-
+      {{
+        (scan_report.targets_by_repo | default({}))
+        | dict2items
+        | rejectattr('value', 'equalto', [])
+        | map(attribute='key')
+        | list
+      }}
+
+# -------------------------
+# Your existing tasks
+# -------------------------
 
 - name: Action | ensure targets_by_repo exists
   ansible.builtin.assert:
