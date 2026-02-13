@@ -10,7 +10,6 @@ hamgit:
   # Token file used ONLY for glab API calls
   token_file: "{{ playbook_dir }}/../../glab/hamgit-token"
 
-
 # =========================
 # Workspace & outputs
 # =========================
@@ -19,18 +18,16 @@ paths:
   workspace: "{{ playbook_dir }}/../workspace"
   reports: "{{ playbook_dir }}/../reports"
 
-
 # =========================
 # Git behavior
 # =========================
 
 git:
   # Branch created in changed repositories
-  branch_name: "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  branch_name: "reporker-20260213"
 
   # Commit message for all changes
   commit_message: "chore: apply action via reporker for test in new branch"
-
 
 # =========================
 # Action definition
@@ -39,11 +36,9 @@ git:
 action:
 
   target_patterns:
-    - "*Dockerfile*"
-
+    - "requirements.txt*"
   # Example action parameter here is this line: (used by the action role)
-  ensure_line: "# action save and load"
-
+  ensure_line: "# this is the test"
 
 # =========================
 # Execution behavior
