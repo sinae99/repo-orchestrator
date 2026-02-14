@@ -135,7 +135,73 @@ Including:
 
 - ***manually***
 
-## 1 - Run using the helper script (recommended)
+
+## 1 - Run manually
+
+
+### 1) Clone
+```bash
+git clone <THIS_REPO_URL>
+cd reporker
+```
+
+### 2) Create a HamGit token
+In HamGit UI, create a Personal Access Token with scopes:
+- `api`
+- `write_repository`
+
+Store it locally:
+```bash
+mkdir -p glab
+printf '%s' "PASTE_TOKEN_HERE" > glab/hamgit-token
+chmod 600 glab/hamgit-token
+```
+
+### 3) Authenticate glab
+```bash
+cat glab/hamgit-token | glab auth login --hostname hamgit.ir --stdin
+glab api user --hostname hamgit.ir
+```
+
+### 4) Configure reporker
+Edit:
+```bash
+nano ansible/group_vars/all.yml
+```
+
+Set at least:
+- `hamgit.host` (example: `hamgit.ir`)
+- `hamgit.group_id` (example: `44436`)
+- `paths.workspace` and `paths.reports`
+- `git.branch_name` and `git.commit_message`
+- Action settings (patterns / parameters)
+
+### 5) Run 
+Run from `ansible/`:
+```bash
+cd ansible
+```
+
+Phase 1 — discovery:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags discovery
+```
+
+Phase 2 — workspace:
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags workspace
+```
+
+and other Phases
+
+### Run everything
+```bash
+ansible-playbook -i localhost, playbooks/run.yml --tags discovery,workspace,scan,action,report,publish
+```
+
+---
+
+## 2 - Run using the helper script 
 
 
 ### What the script does
@@ -218,68 +284,6 @@ bash scripts/run.sh
 
 
 
-## 2 - Run manually
-
-
-### 1) Clone
-```bash
-git clone <THIS_REPO_URL>
-cd reporker
-```
-
-### 2) Create a HamGit token
-In HamGit UI, create a Personal Access Token with scopes:
-- `api`
-- `write_repository`
-
-Store it locally:
-```bash
-mkdir -p glab
-printf '%s' "PASTE_TOKEN_HERE" > glab/hamgit-token
-chmod 600 glab/hamgit-token
-```
-
-### 3) Authenticate glab
-```bash
-cat glab/hamgit-token | glab auth login --hostname hamgit.ir --stdin
-glab api user --hostname hamgit.ir
-```
-
-### 4) Configure reporker
-Edit:
-```bash
-nano ansible/group_vars/all.yml
-```
-
-Set at least:
-- `hamgit.host` (example: `hamgit.ir`)
-- `hamgit.group_id` (example: `44436`)
-- `paths.workspace` and `paths.reports`
-- `git.branch_name` and `git.commit_message`
-- Action settings (patterns / parameters)
-
-### 5) Run 
-Run from `ansible/`:
-```bash
-cd ansible
-```
-
-Phase 1 — discovery:
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags discovery
-```
-
-Phase 2 — workspace:
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags workspace
-```
-
-and other Phases
-
-### Run everything
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags discovery,workspace,scan,action,report,publish
-```
 
 ---
 
