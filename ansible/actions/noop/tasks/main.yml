@@ -1,0 +1,6 @@
+---
+# Built-in no-op: use for dry wiring or when you only need discovery/scan.
+
+- name: No-op | mark no file changes
+  ansible.builtin.set_fact:
+    changed_files: []

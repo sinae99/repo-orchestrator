@@ -1,11 +1,9 @@
 ---
+# Configuration is loaded automatically from ansible/group_vars/all/
 - name: reporker
   hosts: localhost
   gather_facts: false
   connection: local
-
-  vars_files:
-    - ../group_vars/all.yml
 
   roles:
     - role: discovery

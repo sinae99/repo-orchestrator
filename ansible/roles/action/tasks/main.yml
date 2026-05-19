@@ -1,9 +1,5 @@
 ---
-# Phase 4: Execute the action
-
-# -------------------------
-# Load scan report (so action can run standalone)
-# -------------------------
+# Phase 4: Run a pluggable action from ansible/actions/<action.name>/
 
 - name: Action | check scan report exists
   ansible.builtin.stat:
@@ -20,7 +16,6 @@
     file: "{{ paths.reports }}/scan.json"
     name: scan_report
 
-# Bring values into the variables your action already expects
 - name: Action | set targets_by_repo and repos_with_targets from scan report
   ansible.builtin.set_fact:
     targets_by_repo: "{{ scan_report.targets_by_repo | default({}) }}"
@@ -33,57 +28,65 @@
         | list
       }}
 
-# -------------------------
-# Your existing tasks
-# -------------------------
-
-- name: Action | ensure targets_by_repo exists
+- name: Action | assert scan data present
   ansible.builtin.assert:
     that:
       - targets_by_repo is defined
-    fail_msg: "targets_by_repo not found. Run scan role before action role."
+    fail_msg: "targets_by_repo missing from scan report."
 
-# Flatten all targets into a single list for lineinfile
 - name: Action | build flat target list
   ansible.builtin.set_fact:
     all_targets: "{{ targets_by_repo.values() | list | flatten }}"
 
 - name: Action | debug target count
   ansible.builtin.debug:
-    msg: "Total targets discovered: {{ all_targets | length }}"
+    msg: "Action '{{ action.name | default('unset') }}': {{ all_targets | length }} target file(s)."
 
-# If no targets at all, do nothing
-- name: Action | skip when no targets exist
-  ansible.builtin.debug:
-    msg: "No targets found across repositories. Action will not run."
-  when: all_targets | length == 0
-
-# Apply action to each target file (idempotent)
-- name: Action | ensure action line exists in each target file
-  ansible.builtin.lineinfile:
-    path: "{{ item }}"
-    line: "{{ action.ensure_line }}"
-    state: present
-    insertafter: EOF
-  loop: "{{ all_targets }}"
-  register: line_results
-  when: all_targets | length > 0
-
-# Build a set of changed files from lineinfile results
-- name: Action | collect changed files
+- name: Action | resolve tasks file for this action
   ansible.builtin.set_fact:
-    changed_files: "{{ (line_results.results | selectattr('changed', 'equalto', true) | map(attribute='item') | list) if (all_targets | length > 0) else [] }}"
+    action_tasks_file: >-
+      {{
+        action.tasks_file
+        if (action.tasks_file is defined and action.tasks_file | length > 0)
+        else (playbook_dir ~ '/../actions/' ~ (action.name | default('noop')) ~ '/tasks/main.yml')
+      }}
 
-# Map changes back to repos
+- name: Action | verify action tasks file exists
+  ansible.builtin.stat:
+    path: "{{ action_tasks_file }}"
+  register: action_tasks_stat
+
+- name: Action | fail if action tasks missing
+  ansible.builtin.fail:
+    msg: >-
+      No tasks at {{ action_tasks_file }}.
+      Create ansible/actions/{{ action.name | default('noop') }}/tasks/main.yml
+      or set action.tasks_file to a playbook-relative path.
+  when: not action_tasks_stat.stat.exists
+
+- name: Action | run pluggable action tasks
+  ansible.builtin.include_tasks: "{{ action_tasks_file }}"
+
+- name: Action | normalize changed_files from action
+  ansible.builtin.set_fact:
+    changed_files: "{{ changed_files | default([]) }}"
+
 - name: Action | build changed_targets_by_repo map
   ansible.builtin.set_fact:
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) | combine({ repo: (targets_by_repo[repo] | intersect(changed_files)) }) }}"
   loop: "{{ repos_with_targets }}"
   loop_control:
     loop_var: repo
+  when: all_targets | length > 0
+
+- name: Action | empty change map when no targets
+  ansible.builtin.set_fact:
+    changed_targets_by_repo: {}
+  when: all_targets | length == 0
 
 - name: Action | derive changed_repos
   ansible.builtin.set_fact:
+    changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
     changed_repos: "{{ changed_targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
 - name: Action | write action report (JSON)
@@ -94,8 +97,10 @@
       {{
         {
           "action": {
-            "ensure_line": action.ensure_line,
-            "target_patterns": action.target_patterns
+            "name": action.name | default('noop'),
+            "tasks_file": action_tasks_file,
+            "target_patterns": action.target_patterns | default([]),
+            "params": action.params | default({})
           },
           "summary": {
             "total_targets": all_targets | length,
@@ -105,4 +110,3 @@
           "changed_targets_by_repo": changed_targets_by_repo
         } | to_nice_json
       }}
-

@@ -1,0 +1,40 @@
+---
+# Example action: ensure a single line exists at end of each target file (idempotent).
+# Configure via group_vars:
+#   action.params.ensure_line: "text to ensure"
+#   action.params.insertafter: "EOF"   # optional, lineinfile insertafter
+
+- name: Line-append | require params.ensure_line
+  ansible.builtin.assert:
+    that:
+      - action.params is defined
+      - action.params.ensure_line is defined
+      - action.params.ensure_line | length > 0
+    fail_msg: "Set action.params.ensure_line in group_vars for the line-append action."
+
+- name: Line-append | ensure line in each target
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    line: "{{ action.params.ensure_line }}"
+    state: present
+    insertafter: "{{ action.params.insertafter | default('EOF') }}"
+  loop: "{{ all_targets }}"
+  register: line_append_results
+  when: all_targets | length > 0
+
+- name: Line-append | set changed_files (none)
+  ansible.builtin.set_fact:
+    changed_files: []
+  when: all_targets | length == 0
+
+- name: Line-append | set changed_files from results
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        line_append_results.results
+        | selectattr('changed', 'defined')
+        | selectattr('changed', 'equalto', true)
+        | map(attribute='item')
+        | list
+      }}
+  when: all_targets | length > 0

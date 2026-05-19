@@ -66,12 +66,15 @@
     # Create/reset branch from default
     git -C "$repo_dir" checkout -B "$branch"
 
-    # Stage only changed targets if list exists and is non-empty; otherwise stage all changes
-
-    # Stage only known target files for this repo (robust)
-    git -C "$repo_dir" add -- Dockerfile || true
-    git -C "$repo_dir" add -A
-
+    changefile_list="$repo_dir/.repo_orch_changed_files"
+    if [[ -s "$changefile_list" ]]; then
+      while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        git -C "$repo_dir" add -- "$f"
+      done < "$changefile_list"
+    else
+      git -C "$repo_dir" add -A
+    fi
 
     # Commit & push only if there are changes
     if git -C "$repo_dir" status --porcelain | grep -q .; then
@@ -91,7 +94,7 @@
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/publish.json"
     mode: "0644"
-    content: "{{ publish_run | to_nice_json }}\n"
+    content: "{{ (publish_run | default({'skipped': true, 'reason': 'no changed repos'}, true)) | to_nice_json }}\n"
 
 - name: Publish | cleanup temporary staging files
   ansible.builtin.file:

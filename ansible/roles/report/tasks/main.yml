@@ -41,8 +41,9 @@
             "commit_message": git.commit_message
           },
           "action": {
-            "target_patterns": action.target_patterns,
-            "ensure_line": action.ensure_line
+            "name": action.name | default('noop'),
+            "target_patterns": action.target_patterns | default([]),
+            "params": action.params | default({})
           },
           "summary": {
             "repos_total": repos | length,

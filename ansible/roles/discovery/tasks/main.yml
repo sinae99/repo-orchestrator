@@ -34,6 +34,7 @@
   loop:
     - "{{ paths.reports }}"
     - "{{ paths.workspace }}"
+    - "{{ playbook_dir }}/../../glab"
 
 - name: Discovery | fetch group projects via glab API (raw JSON)
   ansible.builtin.command: >

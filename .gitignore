@@ -1,27 +1,20 @@
-# =========================
-# Local secrets / tokens
-# =========================
+# Secrets
 glab/hamgit-token
 
-# =========================
-# Generated artifacts
-# =========================
-ansible/workspace/
-ansible/reports/
+# Generated clone list
+glab/repos.txt
 
-# Keep placeholder files if you used .keep
+# Working trees and reports
+ansible/workspace/*
 !ansible/workspace/.keep
+ansible/reports/*
 !ansible/reports/.keep
 
-# =========================
-# Ansible noise
-# =========================
+# Ansible
 *.retry
+ansible/.ansible-tmp/
 
-# =========================
-# Editor / OS
-# =========================
+# Editors / OS
 .DS_Store
 .vscode/
 .idea/
-
