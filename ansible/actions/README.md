@@ -1,70 +1,86 @@
-# Actions (pluggable)
+# Actions
 
-Each action is a small Ansible task file tree included by the `action` role after the **scan** phase.
+An action is the pluggable step that runs after the scan phase. reporker finds the target files; your action decides what to do with them.
 
 ## Layout
 
 ```
-ansible/actions/<name>/tasks/main.yml
+ansible/actions/
+└── <name>/
+    └── tasks/
+        └── main.yml
 ```
 
-Optionally add `defaults/main.yml` in the same folder if you use a role-style layout (not auto-loaded unless you include_role; for `include_tasks` only `tasks/main.yml` runs).
-
-## Configuration
+## Activating an action
 
 In `ansible/group_vars/all/reporker.yml`:
 
 ```yaml
 action:
-  name: my-action          # loads ansible/actions/my-action/tasks/main.yml
-  target_patterns: []      # globs for scan (ansible.builtin.find)
-  params: {}               # your knobs; available as `action.params`
-```
-
-Override the path entirely:
-
-```yaml
-action:
-  tasks_file: "{{ playbook_dir }}/../actions/custom/tasks/main.yml"
-  name: custom
-  target_patterns: ["**/*.example"]
-  params: {}
+  name: my-action            # loads ansible/actions/my-action/tasks/main.yml
+  target_patterns:
+    - "Dockerfile*"          # globs for ansible.builtin.find (recurse=true)
+  params:                    # arbitrary dict — available as action.params in tasks
+    my_key: my_value
 ```
 
 ## Variables your tasks receive
 
-| Variable | Description |
-|----------|-------------|
-| `paths.workspace` | Root directory containing one folder per cloned repo |
-| `paths.reports` | Report output directory |
-| `targets_by_repo` | Dict: absolute repo dir → list of target file paths |
-| `repos_with_targets` | Repo dirs that have at least one target |
-| `all_targets` | Flattened list of all target files |
-| `action` | Full action dict from group_vars (`name`, `target_patterns`, `params`, …) |
-| `git`, `hamgit` | As configured in group_vars |
+| Variable | Type | Description |
+|---|---|---|
+| `all_targets` | list | Flat list of every file matched by `action.target_patterns` |
+| `targets_by_repo` | dict | `repo_path → [file, …]` |
+| `repos_with_targets` | list | Repo dirs that have at least one matched file |
+| `action` | dict | The full action block from config (`name`, `target_patterns`, `params`) |
+| `paths` | dict | `workspace` and `reports` paths |
+| `git` | dict | Branch name and commit message |
+| `gitlab` | dict | Host, group ID, and repo filter |
 
 ## What your tasks must set
 
-| Fact | Required |
-|------|----------|
-| `changed_files` | Yes — list of absolute paths modified by this action (empty list if nothing changed) |
+| Fact | Required | Description |
+|---|---|---|
+| `changed_files` | **yes** | List of absolute paths modified by this action. Set to `[]` for read-only actions. |
 
-The `action` role aggregates `changed_files` into `changed_targets_by_repo`, `changed_repos`, and `ansible/reports/action.json`.
+The `action` role aggregates `changed_files` into `changed_targets_by_repo`, `changed_repos`, and `ansible/reports/action.json`. The `publish` role then uses `changed_repos` to branch/commit/push.
 
-## Bundled examples
+## Bundled actions
 
-| Name | Purpose |
-|------|---------|
-| `noop` | Does nothing; safe default for wiring tests |
-| `line-append` | Idempotent `lineinfile` using `action.params.ensure_line` |
+| Name | Mode | Description |
+|---|---|---|
+| [`noop`](noop/) | read-only | Does nothing — safe default for wiring and dry runs |
+| [`line-append`](line-append/) | write | Idempotent `lineinfile` using `action.params.ensure_line` |
+| [`priorityclass`](priorityclass/) | read-only | Finds K8s manifests with `priorityClassName: medium` or `low` |
 
 ## Adding a new action
 
 1. Create `ansible/actions/<name>/tasks/main.yml`.
-2. Set `action.name: <name>` and `action.target_patterns` in `group_vars/all/reporker.yml`.
-3. Implement idempotent tasks and set `changed_files` when you touch files.
+2. Set `action.name: <name>` and `action.target_patterns` in config.
+3. Implement idempotent tasks; set `changed_files` when done.
 
-Run only your stack while developing:
+```yaml
+# ansible/actions/my-action/tasks/main.yml
+
+- name: My action | do something to each target
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    line: "# touched by reporker"
+    state: present
+  loop: "{{ all_targets }}"
+  register: my_results
+
+- name: My action | set changed_files
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        my_results.results
+        | selectattr('changed', 'equalto', true)
+        | map(attribute='item')
+        | list
+      }}
+```
+
+Develop iteratively with just the scan and action phases:
 
 ```bash
 cd ansible

@@ -1,35 +1,44 @@
 # =============================================================================
-# Reporker — single configuration file (copy values you need; edit here only)
+# reporker — single configuration file
 # =============================================================================
 
-# --- GitLab API (glab discovery only; git uses SSH) ---
-hamgit:
-  host: hamgit.ir
-  group_id: 44436
-  # Path relative to ansible/ (playbook_dir); file must exist before discovery
-  token_file: "{{ playbook_dir }}/../../glab/hamgit-token"
+# --- GitLab connection (glab discovery only; git operations use SSH) ---
+gitlab:
+  host: gitlab.com                   # your GitLab instance hostname
+  group_id: 12345                    # numeric group ID to scan
+  # Personal access token file (needs api scope). Path relative to ansible/.
+  # Create it with: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
+  token_file: "{{ playbook_dir }}/../../glab/token"
+  # Filter repos to clone by name (last path segment of the project path).
+  # Empty list = clone everything in the group.
+  # Example: ["deployment", "infra-base"]
+  repo_filter: []
 
-# --- Workspace & reports (paths relative to ansible/ unless you use absolute) ---
+# --- Local paths ---
 paths:
-  workspace: "{{ playbook_dir }}/../workspace"
-  reports: "{{ playbook_dir }}/../reports"
+  workspace: "{{ playbook_dir }}/../workspace"   # cloned repos land here
+  reports:   "{{ playbook_dir }}/../reports"     # JSON output
 
-# --- Git branch / commit when publishing ---
+# --- Git settings for the publish phase ---
 git:
-  branch_name: "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  branch_name:    "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
   commit_message: "chore: reporker automated change"
 
-# --- Pluggable action (see ansible/actions/README.md) ---
-# action.name: directory under ansible/actions/<name>/
-# action.target_patterns: globs for the scan phase (ansible.builtin.find)
-# action.params: arbitrary dict passed into your action tasks as `action.params`
+# --- Pluggable action ---
+# action.name        : folder under ansible/actions/<name>/
+# action.target_patterns : globs passed to ansible.builtin.find (recurse=true)
+# action.params      : arbitrary dict available as `action.params` in your tasks
 action:
   name: noop
   target_patterns:
     - "*.___reporker_no_match___"
   params: {}
 
-# Example — append a line to matched files (uncomment and switch name):
+# ---------------------------------------------------------------------------
+# Example configs (uncomment and adjust):
+# ---------------------------------------------------------------------------
+
+# Append a line to every requirements.txt:
 # action:
 #   name: line-append
 #   target_patterns:
@@ -37,3 +46,14 @@ action:
 #   params:
 #     ensure_line: "# managed by reporker"
 #     insertafter: EOF
+
+# Find K8s manifests with medium or low priorityClassName (read-only):
+# action:
+#   name: priorityclass
+#   target_patterns:
+#     - "*.yaml"
+#     - "*.yml"
+#   params:
+#     priority_classes:
+#       - medium
+#       - low

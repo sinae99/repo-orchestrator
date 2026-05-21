@@ -1,0 +1,98 @@
+---
+# Action: priorityclass
+# Read-only scan — finds Kubernetes YAML manifests that contain a
+# priorityClassName whose value matches one of the configured classes.
+#
+# Configure in group_vars/all/reporker.yml:
+#   action:
+#     name: priorityclass
+#     target_patterns: ["*.yaml", "*.yml"]
+#     params:
+#       priority_classes: [medium, low]   # defaults to [medium, low] if omitted
+#
+# Outputs:
+#   ansible/reports/priorityclass.json   — findings broken down per class
+#
+# This action is read-only: changed_files is always set to [].
+
+- name: PriorityClass | resolve target priority classes
+  ansible.builtin.set_fact:
+    _pc_classes: "{{ action.params.priority_classes | default(['medium', 'low']) }}"
+
+- name: PriorityClass | debug scan start
+  ansible.builtin.debug:
+    msg: "Scanning {{ all_targets | length }} manifest(s) for priorityClassName: {{ _pc_classes | join(', ') }}"
+
+# For each manifest, emit a comma-separated list of matched classes (e.g. "medium,low"),
+# or an empty string when no class matches.
+- name: PriorityClass | grep each manifest for matching priority classes
+  ansible.builtin.shell: |
+    set -euo pipefail
+    matched=""
+    {% for cls in _pc_classes %}
+    if grep -qE '^\s*priorityClassName:\s+{{ cls }}\s*(#.*)?$' "{{ item }}" 2>/dev/null; then
+      matched="${matched}{{ cls }},"
+    fi
+    {% endfor %}
+    echo "${matched%,}"
+  args:
+    executable: /bin/bash
+  loop: "{{ all_targets }}"
+  register: _pc_grep
+  changed_when: false
+
+# Build a dict: { "medium": [...files...], "low": [...files...] }
+# Each class gets all files whose grep output contains that class name.
+- name: PriorityClass | collect files per priority class
+  ansible.builtin.set_fact:
+    _pc_findings: >-
+      {{
+        _pc_findings | default({}) | combine({
+          item: _pc_grep.results
+            | selectattr('stdout', 'defined')
+            | selectattr('stdout', 'search', item)
+            | map(attribute='item')
+            | list
+        })
+      }}
+  loop: "{{ _pc_classes }}"
+
+# Build summary: { "medium": 3, "low": 2 }
+- name: PriorityClass | compute per-class counts
+  ansible.builtin.set_fact:
+    _pc_summary: >-
+      {{
+        dict(
+          _pc_classes | zip(
+            _pc_classes | map('extract', _pc_findings) | map('length') | list
+          )
+        )
+      }}
+
+- name: PriorityClass | write priorityclass.json report
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/priorityclass.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "priorityclass",
+          "priority_classes_searched": _pc_classes,
+          "summary": {
+            "total_manifests_scanned": all_targets | length,
+            "matches_per_class": _pc_summary
+          },
+          "findings": _pc_findings
+        } | to_nice_json
+      }}
+
+- name: PriorityClass | print summary
+  ansible.builtin.debug:
+    msg: >-
+      {% for cls in _pc_classes %}
+      {{ cls }}: {{ _pc_findings[cls] | length }} manifest(s)  {% endfor %}
+      — full report: {{ paths.reports }}/priorityclass.json
+
+- name: PriorityClass | set changed_files (read-only — no modifications)
+  ansible.builtin.set_fact:
+    changed_files: []

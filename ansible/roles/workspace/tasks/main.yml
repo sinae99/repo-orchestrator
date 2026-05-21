@@ -1,5 +1,5 @@
 ---
-# Phase 2: Clone/update repositories locally into the workspace
+# Phase 2: Clone/update repositories into the local workspace
 
 - name: Workspace | verify repos.txt exists
   ansible.builtin.stat:
@@ -8,7 +8,7 @@
 
 - name: Workspace | fail if repos.txt is missing
   ansible.builtin.fail:
-    msg: "Missing glab/repos.txt. Run the discovery role first (playbook run.yml)."
+    msg: "glab/repos.txt not found. Run the discovery phase first (--tags discovery)."
   when: not repos_txt_stat.stat.exists
 
 - name: Workspace | read repos.txt
@@ -26,13 +26,13 @@
         | list
       }}
 
-- name: Workspace | show repo URLs count
+- name: Workspace | show repo URL count
   ansible.builtin.debug:
-    msg: "Repo URLs loaded: {{ repo_urls | length }}"
+    msg: "{{ repo_urls | length }} repo(s) to clone/update."
 
-# For each repo, create a local folder name:
-# git@hamgit.ir:group/name.git  -> name
-- name: Workspace | clone or update repos
+# Derive a local folder name from the SSH URL:
+# git@gitlab.com:group/name.git  →  name
+- name: Workspace | clone or fetch-prune repos
   ansible.builtin.shell: |
     set -euo pipefail
 
@@ -42,7 +42,7 @@
     dest="{{ paths.workspace }}/$repo_name"
 
     if [ -d "$dest/.git" ]; then
-      echo "==> UPDATE $repo_name"
+      echo "==> FETCH  $repo_name"
       git -C "$dest" fetch --all --prune
     else
       echo "==> CLONE  $repo_name"

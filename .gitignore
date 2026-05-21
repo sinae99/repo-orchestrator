@@ -1,4 +1,5 @@
-# Secrets
+# GitLab token (never commit)
+glab/token
 glab/hamgit-token
 
 # Generated clone list
