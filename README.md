@@ -2,11 +2,11 @@
 
 > Clone, scan, act, report — across every repo in your GitLab group.
 
-Built for platform and DevOps teams who manage many repositories and need a reliable, auditable alternative to one-off shell scripts. Point it at a GitLab group, choose an action, and reporker handles the rest.
+Point it at a GitLab group, choose an action, and reporker handles the rest.
 
 ---
 
-## How it works
+## How?
 
 ```
 GitLab API → discovery → workspace → scan → action → report → publish
@@ -14,10 +14,10 @@ GitLab API → discovery → workspace → scan → action → report → publis
 
 | Phase | Tool | What happens |
 |---|---|---|
-| `discovery` | glab | Fetch all repos in the group via the GitLab API |
-| `workspace` | git | Clone new repos; fetch-prune existing ones |
-| `scan` | Ansible | Find target files by glob in every repo |
-| `action` | Ansible | Run your pluggable task on every matched file |
+| `discovery` | glab | Get all repos in the group via the GitLab API |
+| `workspace` | git | Clone repos |
+| `scan` | Ansible | Find target files in every repo |
+| `action` | Ansible | Run pluggable task on every matched file |
 | `report` | Ansible | Write JSON reports to `ansible/reports/` |
 | `publish` | git | Branch → commit → push for every changed repo |
 
@@ -35,10 +35,10 @@ Run only the phases you need — tag them independently or chain them together.
 
 ---
 
-## Quick start
+## start
 
 ```bash
-# 1. Clone reporker
+# 1. Clone reporker repo
 git clone <this-repo> reporker && cd reporker
 
 # 2. Store your GitLab personal access token (needs api scope — never committed)
@@ -49,7 +49,7 @@ chmod 600 glab/token
 cat glab/token | glab auth login --hostname gitlab.com --stdin
 
 # 4. Set your host, group ID, and action
-$EDITOR ansible/group_vars/all/reporker.yml
+vim ansible/group_vars/all/reporker.yml
 
 # 5. Run
 cd ansible
@@ -59,9 +59,9 @@ ansible-playbook -i localhost, playbooks/run.yml \
 
 ---
 
-## Configuration
+## Config
 
-All settings live in **`ansible/group_vars/all/reporker.yml`**.
+All settings are in **`ansible/group_vars/all/reporker.yml`**.
 
 ```yaml
 gitlab:
@@ -80,16 +80,17 @@ git:
 
 action:
   name: noop
+  # for example :
   target_patterns:
     - "*.yaml"
   params: {}
 ```
 
-**`repo_filter`** limits which repos are cloned and scanned. Leave it empty to process the entire group.
+**`repo_filter`** limits which repos inside the group are cloned and scanned. Leave it empty to process the entire group.
 
 ---
 
-## Running phases
+## Phases
 
 ```bash
 cd ansible
@@ -100,25 +101,18 @@ ansible-playbook -i localhost, playbooks/run.yml --tags discovery,workspace
 # Re-run scan/action/report against an already-cloned workspace
 ansible-playbook -i localhost, playbooks/run.yml --tags scan,action,report
 
-# Full pipeline including push
+# Full
 ansible-playbook -i localhost, playbooks/run.yml \
   --tags discovery,workspace,scan,action,report,publish
 ```
 
-Override config inline with `-e`:
 
-```bash
-ansible-playbook -i localhost, playbooks/run.yml --tags scan,action,report \
-  -e '{"action": {"name": "priorityclass", "target_patterns": ["*.yaml","*.yml"], "params": {}}}'
-```
 
----
-
-## Bundled actions
+## Sample actions
 
 | Action | Mode | Description |
 |---|---|---|
-| [`noop`](ansible/actions/noop/) | read-only | Pipeline smoke-test; touches nothing |
+| [`noop`](ansible/actions/noop/) | read-only | touches nothing |
 | [`line-append`](ansible/actions/line-append/) | write | Idempotently appends a line to every matched file |
 | [`priorityclass`](ansible/actions/priorityclass/) | read-only | Finds K8s manifests using `priorityClassName: medium` or `low` |
 
@@ -133,7 +127,7 @@ Your tasks receive:
 
 | Variable | Description |
 |---|---|
-| `all_targets` | Flat list of every matched file |
+| `all_targets` | List of every matched file |
 | `targets_by_repo` | Dict: `repo_path → [file, …]` |
 | `repos_with_targets` | Repo paths that have at least one match |
 | `action.params` | Your custom params from config |
@@ -145,7 +139,7 @@ Your tasks **must** set `changed_files` before finishing:
     changed_files: []   # absolute paths you modified; [] for read-only actions
 ```
 
-See [`ansible/actions/README.md`](ansible/actions/README.md) for the full variable contract.
+See [`ansible/actions/README.md`](ansible/actions/README.md) for the full doc.
 
 ---
 

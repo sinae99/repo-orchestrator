@@ -1,7 +1,6 @@
 # glab/
 
-Runtime files used by the discovery phase. Both are gitignored — create them yourself.
-
+Runtime files used by the discovery phase.
 ## `token`
 
 Personal access token with `api` scope for your GitLab instance. Used **only** for `glab api` calls during discovery. Git operations (clone, push) use SSH.
