@@ -1,5 +1,5 @@
 ---
-# Configuration is loaded automatically from ansible/group_vars/all/
+# Configuration is loaded automatically from ansible/group_vars/all.yml
 - name: reporker
   hosts: localhost
   gather_facts: false

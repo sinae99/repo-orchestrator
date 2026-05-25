@@ -54,7 +54,7 @@ vim ansible/group_vars/all.yml
 
 # 5. Run
 cd ansible
-ansible-playbook -i localhost, playbooks/run.yml \
+ansible-playbook -i inventory.ini playbooks/run.yml \
   --tags discovery,workspace,scan,action,report
 ```
 
@@ -83,9 +83,8 @@ git:
   branch_name:    "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
   commit_message: "chore: reporker automated change"
 
-action:
+reporker_action:
   name: noop
-  # for example :
   target_patterns:
     - "*.yaml"
   params: {}
@@ -101,13 +100,13 @@ action:
 cd ansible
 
 # Discover + clone only
-ansible-playbook -i localhost, playbooks/run.yml --tags discovery,workspace
+ansible-playbook -i inventory.ini playbooks/run.yml --tags discovery,workspace
 
 # Re-run scan/action/report against an already-cloned workspace
-ansible-playbook -i localhost, playbooks/run.yml --tags scan,action,report
+ansible-playbook -i inventory.ini playbooks/run.yml --tags scan,action,report
 
 # Full
-ansible-playbook -i localhost, playbooks/run.yml \
+ansible-playbook -i inventory.ini playbooks/run.yml \
   --tags discovery,workspace,scan,action,report,publish
 ```
 
@@ -126,7 +125,7 @@ ansible-playbook -i localhost, playbooks/run.yml \
 ## Writing your own action
 
 1. Create `ansible/actions/<name>/tasks/main.yml`
-2. Set `action.name: <name>` in config
+2. Set `reporker_action.name: <name>` in config
 
 Your tasks receive:
 
@@ -135,7 +134,7 @@ Your tasks receive:
 | `all_targets` | List of every matched file |
 | `targets_by_repo` | Dict: `repo_path → [file, …]` |
 | `repos_with_targets` | Repo paths that have at least one match |
-| `action.params` | Your custom params from config |
+| `reporker_action.params` | Your custom params from config |
 
 Your tasks **must** set `changed_files` before finishing:
 

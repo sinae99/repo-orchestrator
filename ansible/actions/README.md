@@ -13,14 +13,14 @@ ansible/actions/
 
 ## Activating an action
 
-In `ansible/group_vars/all/reporker.yml`:
+In `ansible/group_vars/all.yml`:
 
 ```yaml
-action:
+reporker_action:
   name: my-action            # loads ansible/actions/my-action/tasks/main.yml
   target_patterns:
     - "Dockerfile*"          # globs for ansible.builtin.find (recurse=true)
-  params:                    # arbitrary dict — available as action.params in tasks
+  params:                    # arbitrary dict — available as reporker_action.params in tasks
     my_key: my_value
 ```
 
@@ -28,10 +28,10 @@ action:
 
 | Variable | Type | Description |
 |---|---|---|
-| `all_targets` | list | Flat list of every file matched by `action.target_patterns` |
+| `all_targets` | list | Flat list of every file matched by `reporker_action.target_patterns` |
 | `targets_by_repo` | dict | `repo_path → [file, …]` |
 | `repos_with_targets` | list | Repo dirs that have at least one matched file |
-| `action` | dict | The full action block from config (`name`, `target_patterns`, `params`) |
+| `reporker_action` | dict | The full action block from config (`name`, `target_patterns`, `params`) |
 | `paths` | dict | `workspace` and `reports` paths |
 | `git` | dict | Branch name and commit message |
 | `gitlab` | dict | Host, group ID, and repo filter |
@@ -49,13 +49,13 @@ The `action` role aggregates `changed_files` into `changed_targets_by_repo`, `ch
 | Name | Mode | Description |
 |---|---|---|
 | [`noop`](noop/) | read-only | Does nothing — safe default for wiring and dry runs |
-| [`line-append`](line-append/) | write | Idempotent `lineinfile` using `action.params.ensure_line` |
+| [`line-append`](line-append/) | write | Idempotent `lineinfile` using `reporker_action.params.ensure_line` |
 | [`priorityclass`](priorityclass/) | read-only | Finds K8s manifests with `priorityClassName: medium` or `low` |
 
 ## Adding a new action
 
 1. Create `ansible/actions/<name>/tasks/main.yml`.
-2. Set `action.name: <name>` and `action.target_patterns` in config.
+2. Set `reporker_action.name: <name>` and `reporker_action.target_patterns` in config.
 3. Implement idempotent tasks; set `changed_files` when done.
 
 ```yaml
@@ -84,5 +84,5 @@ Develop iteratively with just the scan and action phases:
 
 ```bash
 cd ansible
-ansible-playbook -i localhost, playbooks/run.yml --tags scan,action
+ansible-playbook -i inventory.ini playbooks/run.yml --tags scan,action
 ```
