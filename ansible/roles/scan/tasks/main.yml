@@ -63,7 +63,7 @@
     count=$(echo "$list" | jq 'length')
     if [ "$count" -eq 0 ]; then exit 0; fi
     echo "$list" | jq -r '.[]' \
-      | xargs -r grep -l {{ reporker_action.content_grep | quote }} 2>/dev/null \
+      | xargs -r grep -El {{ reporker_action.content_grep | quote }} 2>/dev/null \
       || true
   args:
     executable: /bin/bash
