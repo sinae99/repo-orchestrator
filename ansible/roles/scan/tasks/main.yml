@@ -59,11 +59,10 @@
 - name: Scan | grep targets for content match
   ansible.builtin.shell: |
     set -euo pipefail
-    files=({{ targets_by_repo[item] | map('quote') | join(' ') }})
-    if [ ${#files[@]} -eq 0 ]; then
-      exit 0
-    fi
-    printf '%s\n' "${files[@]}" \
+    list={{ targets_by_repo[item] | to_json | quote }}
+    count=$(echo "$list" | jq 'length')
+    if [ "$count" -eq 0 ]; then exit 0; fi
+    echo "$list" | jq -r '.[]' \
       | xargs -r grep -l {{ reporker_action.content_grep | quote }} 2>/dev/null \
       || true
   args:

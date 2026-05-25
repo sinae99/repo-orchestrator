@@ -87,10 +87,13 @@ reporker_action:
   name: noop
   target_patterns:
     - "*.yaml"
+  content_grep: ""           # optional: only pass files containing this string to the action
   params: {}
 ```
 
 **`repo_filter`** limits which repos inside the group are cloned and scanned. Leave it empty to process the entire group.
+
+**`content_grep`** narrows the scan further: after `find` matches files by pattern, only files whose content contains this string are kept. This is what makes `scan.json` useful — instead of listing every YAML file, it lists only the ones you actually care about. Leave empty or omit to pass all matched files to the action.
 
 ---
 
