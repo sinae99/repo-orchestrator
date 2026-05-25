@@ -8,7 +8,7 @@
 
 - name: Scan | fail if workspace is missing
   ansible.builtin.fail:
-    msg: "Workspace directory not found at {{ paths.workspace }}. Run the workspace role first."
+    msg: "Workspace directory not found at {{ paths.workspace }}. Run the workspace phase first (--tags workspace)."
   when: not workspace_stat.stat.exists
 
 - name: Scan | list repositories in workspace
@@ -27,11 +27,10 @@
     msg: "No repositories found in workspace ({{ paths.workspace }})."
   when: repos | length == 0
 
-# Find targets per repo based on action.target_patterns (e.g., Dockerfile*)
 - name: Scan | find targets in each repo
   ansible.builtin.find:
     paths: "{{ item }}"
-    patterns: "{{ action.target_patterns }}"
+    patterns: "{{ reporker_action.target_patterns }}"
     recurse: true
     file_type: file
   loop: "{{ repos }}"
@@ -56,11 +55,10 @@
 
 - name: Scan | derive repos_with_targets and repos_without_targets
   ansible.builtin.set_fact:
-    repos_with_targets: "{{ targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
+    repos_with_targets:    "{{ targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
     repos_without_targets: "{{ targets_by_repo | dict2items | selectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
-
-- name: Scan | write scan report (JSON)
+- name: Scan | write scan.json
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/scan.json"
     mode: "0644"
@@ -68,7 +66,7 @@
       {{
         {
           "workspace": paths.workspace,
-          "target_patterns": action.target_patterns,
+          "target_patterns": reporker_action.target_patterns,
           "repos_total": repos | length,
           "repos_with_targets": repos_with_targets | length,
           "repos_without_targets": repos_without_targets | length,

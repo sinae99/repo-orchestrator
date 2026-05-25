@@ -16,9 +16,9 @@
 
 - name: Report | set safe defaults for optional facts
   ansible.builtin.set_fact:
-    repos_with_targets:    "{{ repos_with_targets    | default([]) }}"
-    repos_without_targets: "{{ repos_without_targets | default([]) }}"
-    changed_repos:         "{{ changed_repos         | default([]) }}"
+    repos_with_targets:      "{{ repos_with_targets      | default([]) }}"
+    repos_without_targets:   "{{ repos_without_targets   | default([]) }}"
+    changed_repos:           "{{ changed_repos           | default([]) }}"
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
 
 - name: Report | write report.json (full run summary)
@@ -29,8 +29,8 @@
       {{
         {
           "gitlab": {
-            "host": gitlab.host,
-            "group_id": gitlab.group_id,
+            "host":        gitlab.host,
+            "group_id":    gitlab.group_id,
             "repo_filter": gitlab.repo_filter | default([])
           },
           "paths": {
@@ -42,15 +42,15 @@
             "commit_message": git.commit_message
           },
           "action": {
-            "name":            action.name | default('noop'),
-            "target_patterns": action.target_patterns | default([]),
-            "params":          action.params | default({})
+            "name":            reporker_action.name | default('noop'),
+            "target_patterns": reporker_action.target_patterns | default([]),
+            "params":          reporker_action.params | default({})
           },
           "summary": {
-            "repos_total":            repos | length,
-            "repos_with_targets":     repos_with_targets | length,
-            "repos_without_targets":  repos_without_targets | length,
-            "repos_changed":          changed_repos | length
+            "repos_total":           repos | length,
+            "repos_with_targets":    repos_with_targets | length,
+            "repos_without_targets": repos_without_targets | length,
+            "repos_changed":         changed_repos | length
           },
           "targets_by_repo":         targets_by_repo,
           "changed_targets_by_repo": changed_targets_by_repo

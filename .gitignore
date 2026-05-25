@@ -2,6 +2,9 @@
 glab/token
 glab/hamgit-token
 
+# Local config override (real host/group values stay out of git)
+ansible/group_vars/all.yml
+
 # Generated clone list
 glab/repos.txt
 

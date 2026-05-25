@@ -49,7 +49,8 @@ chmod 600 glab/token
 cat glab/token | glab auth login --hostname gitlab.com --stdin
 
 # 4. Set your host, group ID, and action
-vim ansible/group_vars/all/reporker.yml
+cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
+vim ansible/group_vars/all.yml
 
 # 5. Run
 cd ansible
@@ -61,7 +62,11 @@ ansible-playbook -i localhost, playbooks/run.yml \
 
 ## Config
 
-All settings are in **`ansible/group_vars/all/reporker.yml`**.
+All settings live in **`ansible/group_vars/all.yml`** (gitignored — copy from the example):
+
+```bash
+cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
+```
 
 ```yaml
 gitlab:

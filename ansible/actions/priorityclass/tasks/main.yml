@@ -3,21 +3,19 @@
 # Read-only scan — finds Kubernetes YAML manifests that contain a
 # priorityClassName whose value matches one of the configured classes.
 #
-# Configure in group_vars/all/reporker.yml:
-#   action:
+# Configure in group_vars:
+#   reporker_action:
 #     name: priorityclass
 #     target_patterns: ["*.yaml", "*.yml"]
 #     params:
 #       priority_classes: [medium, low]   # defaults to [medium, low] if omitted
 #
-# Outputs:
-#   ansible/reports/priorityclass.json   — findings broken down per class
-#
+# Output: ansible/reports/priorityclass.json
 # This action is read-only: changed_files is always set to [].
 
 - name: PriorityClass | resolve target priority classes
   ansible.builtin.set_fact:
-    _pc_classes: "{{ action.params.priority_classes | default(['medium', 'low']) }}"
+    _pc_classes: "{{ reporker_action.params.priority_classes | default(['medium', 'low']) }}"
 
 - name: PriorityClass | debug scan start
   ansible.builtin.debug:
@@ -42,7 +40,6 @@
   changed_when: false
 
 # Build a dict: { "medium": [...files...], "low": [...files...] }
-# Each class gets all files whose grep output contains that class name.
 - name: PriorityClass | collect files per priority class
   ansible.builtin.set_fact:
     _pc_findings: >-
@@ -91,7 +88,7 @@
     msg: >-
       {% for cls in _pc_classes %}
       {{ cls }}: {{ _pc_findings[cls] | length }} manifest(s)  {% endfor %}
-      — full report: {{ paths.reports }}/priorityclass.json
+      — report: {{ paths.reports }}/priorityclass.json
 
 - name: PriorityClass | set changed_files (read-only — no modifications)
   ansible.builtin.set_fact:

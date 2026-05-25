@@ -1,23 +1,26 @@
 ---
-# Example action: ensure a single line exists at end of each target file (idempotent).
-# Configure via group_vars:
-#   action.params.ensure_line: "text to ensure"
-#   action.params.insertafter: "EOF"   # optional, lineinfile insertafter
+# Action: line-append
+# Idempotently ensures a single line exists in every matched file.
+#
+# Required params:
+#   reporker_action.params.ensure_line   — the line to insert
+# Optional params:
+#   reporker_action.params.insertafter   — lineinfile insertafter (default: EOF)
 
 - name: Line-append | require params.ensure_line
   ansible.builtin.assert:
     that:
-      - action.params is defined
-      - action.params.ensure_line is defined
-      - action.params.ensure_line | length > 0
-    fail_msg: "Set action.params.ensure_line in group_vars for the line-append action."
+      - reporker_action.params is defined
+      - reporker_action.params.ensure_line is defined
+      - reporker_action.params.ensure_line | length > 0
+    fail_msg: "Set reporker_action.params.ensure_line in your config for the line-append action."
 
 - name: Line-append | ensure line in each target
   ansible.builtin.lineinfile:
     path: "{{ item }}"
-    line: "{{ action.params.ensure_line }}"
+    line: "{{ reporker_action.params.ensure_line }}"
     state: present
-    insertafter: "{{ action.params.insertafter | default('EOF') }}"
+    insertafter: "{{ reporker_action.params.insertafter | default('EOF') }}"
   loop: "{{ all_targets }}"
   register: line_append_results
   when: all_targets | length > 0

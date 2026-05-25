@@ -23,7 +23,7 @@
 
 - name: Preflight | fail if token file is missing
   ansible.builtin.fail:
-    msg: "Token file not found at {{ gitlab.token_file }}. Create it with: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token"
+    msg: "Token file not found at {{ gitlab.token_file }}. Create it: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token"
   when: not gitlab_token_stat.stat.exists
 
 - name: Ensure output directories exist
@@ -36,6 +36,14 @@
     - "{{ paths.workspace }}"
     - "{{ playbook_dir }}/../../glab"
 
+# Skip the API call when repos.json is already present — useful when the
+# GitLab instance is unreachable and you want to re-filter an existing snapshot.
+# Force a fresh fetch by deleting ansible/reports/repos.json first.
+- name: Discovery | check for cached repos.json
+  ansible.builtin.stat:
+    path: "{{ paths.reports }}/repos.json"
+  register: _repos_json_cached
+
 - name: Discovery | fetch group projects via glab API (raw JSON)
   ansible.builtin.command: >
     glab api "groups/{{ gitlab.group_id }}/projects?per_page=100"
@@ -43,18 +51,33 @@
     --paginate
   register: glab_projects
   changed_when: false
+  when: not _repos_json_cached.stat.exists
 
-- name: Discovery | write repos.json (raw API output)
+- name: Discovery | write repos.json (raw paginated output)
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/repos.json"
     content: "{{ glab_projects.stdout }}\n"
     mode: "0644"
+  when: not _repos_json_cached.stat.exists
 
-# Filter criteria applied in jq:
+# glab --paginate concatenates one JSON array per page: [...][...]
+# Normalize into a single flat array so subsequent jq steps see valid JSON.
+- name: Discovery | normalize repos.json (merge paginated arrays into one)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    jq -s '[.[] | .[]]' "{{ paths.reports }}/repos.json" \
+      > "{{ paths.reports }}/repos.json.tmp"
+    mv "{{ paths.reports }}/repos.json.tmp" "{{ paths.reports }}/repos.json"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: not _repos_json_cached.stat.exists
+
+# repos.txt is always regenerated — re-apply the filter even on a cached snapshot.
+# Filter criteria:
 #   - archived == false
 #   - path_with_namespace does not contain "deletion_scheduled"
-#   - name is in gitlab.repo_filter (when repo_filter is non-empty)
-
+#   - name matches gitlab.repo_filter (case-insensitive; skipped when list is empty)
 - name: Discovery | write repos.txt (SSH clone URLs, honours repo_filter)
   ansible.builtin.shell: |
     set -euo pipefail
@@ -64,7 +87,10 @@
         .[]
         | select(.archived == false)
         | select((.path_with_namespace | tostring) | contains("deletion_scheduled") | not)
-        | select(($names | length) == 0 or (.name | IN($names[])))
+        | select(
+            ($names | length) == 0
+            or (.name | ascii_downcase | IN($names[] | ascii_downcase))
+          )
         | .ssh_url_to_repo
       ' "{{ paths.reports }}/repos.json" > "{{ playbook_dir }}/../../glab/repos.txt"
   args:
@@ -84,4 +110,8 @@
 
 - name: Discovery | report repo count
   ansible.builtin.debug:
-    msg: "Queued {{ repo_count.stdout }} repo(s) for cloning (filter: {{ gitlab.repo_filter | default([]) }}). → glab/repos.txt"
+    msg: >-
+      Queued {{ repo_count.stdout }} repo(s) for cloning
+      (filter: {{ gitlab.repo_filter | default([]) }},
+      cached: {{ _repos_json_cached.stat.exists }})
+      → glab/repos.txt

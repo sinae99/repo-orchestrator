@@ -1,23 +1,24 @@
 # =============================================================================
-# reporker — single configuration file
+# reporker — configuration example
+# Copy this to group_vars/all.yml and fill in your real values.
+# group_vars/all.yml is gitignored so your credentials never get committed.
 # =============================================================================
 
-# --- GitLab connection (glab discovery only; git operations use SSH) ---
+# --- GitLab connection (discovery uses glab API; clone/push use SSH) ---
 gitlab:
   host: gitlab.com                   # your GitLab instance hostname
   group_id: 12345                    # numeric group ID to scan
-  # Personal access token file (needs api scope). Path relative to ansible/.
-  # Create it with: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
+  # Personal access token (needs api scope). Path relative to playbook_dir.
+  # Create with: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
   token_file: "{{ playbook_dir }}/../../glab/token"
-  # Filter repos to clone by name (last path segment of the project path).
+  # Filter repos by name (last path segment, case-insensitive).
   # Empty list = clone everything in the group.
-  # Example: ["deployment", "infra-base"]
   repo_filter: []
 
 # --- Local paths ---
 paths:
-  workspace: "{{ playbook_dir }}/../workspace"   # cloned repos land here
-  reports:   "{{ playbook_dir }}/../reports"     # JSON output
+  workspace: "{{ playbook_dir }}/../workspace"
+  reports:   "{{ playbook_dir }}/../reports"
 
 # --- Git settings for the publish phase ---
 git:
@@ -25,21 +26,21 @@ git:
   commit_message: "chore: reporker automated change"
 
 # --- Pluggable action ---
-# action.name        : folder under ansible/actions/<name>/
-# action.target_patterns : globs passed to ansible.builtin.find (recurse=true)
-# action.params      : arbitrary dict available as `action.params` in your tasks
-action:
+# reporker_action.name          : folder under ansible/actions/<name>/
+# reporker_action.target_patterns : globs for ansible.builtin.find (recurse=true)
+# reporker_action.params        : arbitrary dict available as reporker_action.params
+reporker_action:
   name: noop
   target_patterns:
     - "*.___reporker_no_match___"
   params: {}
 
 # ---------------------------------------------------------------------------
-# Example configs (uncomment and adjust):
+# Example action configs:
 # ---------------------------------------------------------------------------
 
 # Append a line to every requirements.txt:
-# action:
+# reporker_action:
 #   name: line-append
 #   target_patterns:
 #     - "requirements.txt*"
@@ -48,7 +49,7 @@ action:
 #     insertafter: EOF
 
 # Find K8s manifests with medium or low priorityClassName (read-only):
-# action:
+# reporker_action:
 #   name: priorityclass
 #   target_patterns:
 #     - "*.yaml"

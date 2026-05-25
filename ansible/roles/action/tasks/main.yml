@@ -1,5 +1,5 @@
 ---
-# Phase 4: Run a pluggable action from ansible/actions/<action.name>/
+# Phase 4: Run a pluggable action from ansible/actions/<reporker_action.name>/
 
 - name: Action | check scan report exists
   ansible.builtin.stat:
@@ -8,10 +8,10 @@
 
 - name: Action | fail if scan report missing
   ansible.builtin.fail:
-    msg: "Scan report not found at {{ paths.reports }}/scan.json. Run scan stage first."
+    msg: "scan.json not found at {{ paths.reports }}/scan.json. Run the scan phase first (--tags scan)."
   when: not scan_report_stat.stat.exists
 
-- name: Action | load scan report JSON
+- name: Action | load scan report
   ansible.builtin.include_vars:
     file: "{{ paths.reports }}/scan.json"
     name: scan_report
@@ -32,7 +32,7 @@
   ansible.builtin.assert:
     that:
       - targets_by_repo is defined
-    fail_msg: "targets_by_repo missing from scan report."
+    fail_msg: "targets_by_repo missing from scan.json."
 
 - name: Action | build flat target list
   ansible.builtin.set_fact:
@@ -40,15 +40,15 @@
 
 - name: Action | debug target count
   ansible.builtin.debug:
-    msg: "Action '{{ action.name | default('unset') }}': {{ all_targets | length }} target file(s)."
+    msg: "Running '{{ reporker_action.name | default('noop') }}' on {{ all_targets | length }} target file(s)."
 
-- name: Action | resolve tasks file for this action
+- name: Action | resolve tasks file
   ansible.builtin.set_fact:
     action_tasks_file: >-
       {{
-        action.tasks_file
-        if (action.tasks_file is defined and action.tasks_file | length > 0)
-        else (playbook_dir ~ '/../actions/' ~ (action.name | default('noop')) ~ '/tasks/main.yml')
+        reporker_action.tasks_file
+        if (reporker_action.tasks_file is defined and reporker_action.tasks_file | length > 0)
+        else (playbook_dir ~ '/../actions/' ~ (reporker_action.name | default('noop')) ~ '/tasks/main.yml')
       }}
 
 - name: Action | verify action tasks file exists
@@ -59,15 +59,15 @@
 - name: Action | fail if action tasks missing
   ansible.builtin.fail:
     msg: >-
-      No tasks at {{ action_tasks_file }}.
-      Create ansible/actions/{{ action.name | default('noop') }}/tasks/main.yml
-      or set action.tasks_file to a playbook-relative path.
+      No tasks found at {{ action_tasks_file }}.
+      Create ansible/actions/{{ reporker_action.name | default('noop') }}/tasks/main.yml
+      or set reporker_action.tasks_file to an explicit path.
   when: not action_tasks_stat.stat.exists
 
-- name: Action | run pluggable action tasks
+- name: Action | run pluggable action
   ansible.builtin.include_tasks: "{{ action_tasks_file }}"
 
-- name: Action | normalize changed_files from action
+- name: Action | normalize changed_files
   ansible.builtin.set_fact:
     changed_files: "{{ changed_files | default([]) }}"
 
@@ -89,7 +89,7 @@
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
     changed_repos: "{{ changed_targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
-- name: Action | write action report (JSON)
+- name: Action | write action.json
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/action.json"
     mode: "0644"
@@ -97,13 +97,13 @@
       {{
         {
           "action": {
-            "name": action.name | default('noop'),
-            "tasks_file": action_tasks_file,
-            "target_patterns": action.target_patterns | default([]),
-            "params": action.params | default({})
+            "name":            reporker_action.name | default('noop'),
+            "tasks_file":      action_tasks_file,
+            "target_patterns": reporker_action.target_patterns | default([]),
+            "params":          reporker_action.params | default({})
           },
           "summary": {
-            "total_targets": all_targets | length,
+            "total_targets":       all_targets | length,
             "changed_files_count": changed_files | length,
             "changed_repos_count": changed_repos | length
           },
