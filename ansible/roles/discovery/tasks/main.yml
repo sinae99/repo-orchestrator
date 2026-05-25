@@ -73,6 +73,28 @@
   changed_when: true
   when: not _repos_json_cached.stat.exists
 
+# Slim repos.json to essential fields — drops the ~60 noise fields the API returns.
+# Runs whether the data was just fetched or loaded from cache.
+- name: Discovery | slim repos.json to essential fields
+  ansible.builtin.shell: |
+    set -euo pipefail
+    jq 'map({
+      id, name, archived,
+      path_with_namespace,
+      ssh_url_to_repo,
+      http_url_to_repo,
+      web_url,
+      default_branch,
+      last_activity_at,
+      description,
+      visibility
+    })' "{{ paths.reports }}/repos.json" \
+      > "{{ paths.reports }}/repos.json.tmp"
+    mv "{{ paths.reports }}/repos.json.tmp" "{{ paths.reports }}/repos.json"
+  args:
+    executable: /bin/bash
+  changed_when: false
+
 # repos.txt is always regenerated — re-apply the filter even on a cached snapshot.
 # Filter criteria:
 #   - archived == false

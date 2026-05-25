@@ -26,13 +26,15 @@ git:
   commit_message: "chore: reporker automated change"
 
 # --- Pluggable action ---
-# reporker_action.name          : folder under ansible/actions/<name>/
+# reporker_action.name            : folder under ansible/actions/<name>/
 # reporker_action.target_patterns : globs for ansible.builtin.find (recurse=true)
-# reporker_action.params        : arbitrary dict available as reporker_action.params
+# reporker_action.content_grep    : (optional) only keep files whose content matches this string
+# reporker_action.params          : arbitrary dict available as reporker_action.params in tasks
 reporker_action:
   name: noop
   target_patterns:
     - "*.___reporker_no_match___"
+  # content_grep: ""             # leave empty or omit to pass all matched files to the action
   params: {}
 
 # ---------------------------------------------------------------------------

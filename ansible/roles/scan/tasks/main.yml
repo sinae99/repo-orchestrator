@@ -53,6 +53,41 @@
         )
       }}
 
+# Optional content filter: keep only files that actually contain a given string.
+# Set reporker_action.content_grep in config (e.g. "priorityClassName").
+# Without it, all pattern-matched files are passed to the action.
+- name: Scan | grep targets for content match
+  ansible.builtin.shell: |
+    set -euo pipefail
+    files=({{ targets_by_repo[item] | map('quote') | join(' ') }})
+    if [ ${#files[@]} -eq 0 ]; then
+      exit 0
+    fi
+    printf '%s\n' "${files[@]}" \
+      | xargs -r grep -l {{ reporker_action.content_grep | quote }} 2>/dev/null \
+      || true
+  args:
+    executable: /bin/bash
+  loop: "{{ repos }}"
+  register: _content_grep_results
+  changed_when: false
+  when:
+    - reporker_action.content_grep is defined
+    - reporker_action.content_grep | length > 0
+
+- name: Scan | rebuild targets_by_repo to content-matched files only
+  ansible.builtin.set_fact:
+    targets_by_repo: >-
+      {{
+        targets_by_repo | combine({
+          item.item: (item.stdout_lines | map('trim') | reject('equalto', '') | list)
+        })
+      }}
+  loop: "{{ _content_grep_results.results }}"
+  when:
+    - reporker_action.content_grep is defined
+    - reporker_action.content_grep | length > 0
+
 - name: Scan | derive repos_with_targets and repos_without_targets
   ansible.builtin.set_fact:
     repos_with_targets:    "{{ targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
