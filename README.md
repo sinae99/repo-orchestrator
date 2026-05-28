@@ -1,7 +1,5 @@
 # reporker
 
-Bulk operations across every repository in a GitLab group — find files, run checks, apply changes, and optionally push branches.
-
 **The problem:** You need to audit or update something in dozens of repos — every `Dockerfile`, every manifest with `priorityClassName: low`, every `requirements.txt` missing a pin. Doing that by hand does not scale.
 
 **The answer:** Point reporker at a GitLab group, define what to look for, pick an action. It clones the repos, scans for matches, runs your logic, and writes JSON reports. Write actions can open a branch and push.
