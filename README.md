@@ -1,166 +1,138 @@
 # reporker
 
-> Clone, scan, act, report — across every repo in your GitLab group.
+Bulk operations across every repository in a GitLab group — find files, run checks, apply changes, and optionally push branches.
 
-Point it at a GitLab group, choose an action, and reporker handles the rest.
+**The problem:** You need to audit or update something in dozens of repos — every `Dockerfile`, every manifest with `priorityClassName: low`, every `requirements.txt` missing a pin. Doing that by hand does not scale.
+
+**The answer:** Point reporker at a GitLab group, define what to look for, pick an action. It clones the repos, scans for matches, runs your logic, and writes JSON reports. Write actions can open a branch and push.
+
+```
+GitLab group → clone → scan → action → report → (optional) publish
+```
 
 ---
 
-## How?
+## Quick start
 
-```
-GitLab API → discovery → workspace → scan → action → report → publish
+```bash
+git clone https://github.com/you/reporker.git && cd reporker
+
+./reporker init
+# edit ansible/group_vars/all.yml — set gitlab.host, gitlab.group_id, reporker_action
+
+printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
+cat glab/token | glab auth login --hostname gitlab.com --stdin
+
+./reporker clone      # fetch all repos in the group
+./reporker action      # scan + run action + write reports
 ```
 
-| Phase | Tool | What happens |
+Reports land in `ansible/reports/`. For read-only audits, stop there. To push changes:
+
+```bash
+./reporker publish
+```
+
+---
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `./reporker init` | Create local config from the example |
+| `./reporker clone` | Discover repos via GitLab API and clone/update them |
+| `./reporker scan` | Find target files only (`scan.json`) |
+| `./reporker action` | Scan, run your action, write reports |
+| `./reporker publish` | Branch, commit, and push repos that changed |
+| `./reporker run` | Full audit/modify flow without push |
+| `./reporker all` | Everything including publish |
+
+Run `./reporker --help` for the full list.
+
+---
+
+## Configuration
+
+Copy and edit `ansible/group_vars/all.yml` (created by `reporker init`, gitignored):
+
+```yaml
+gitlab:
+  host: gitlab.com
+  group_id: 12345
+  repo_filter: []          # [] = whole group; ["api", "worker"] = subset
+
+reporker_action:
+  name: inventory
+  target_patterns:
+    - "Dockerfile"
+    - "Dockerfile.*"
+  content_grep: ""         # optional: only files containing this string
+  params: {}
+```
+
+| Key | Purpose |
+|---|---|
+| `target_patterns` | File globs to search (recursive) |
+| `content_grep` | Narrow matches to files containing this text |
+| `name` | Action to run — folder under `ansible/actions/` |
+| `params` | Passed to your action as `reporker_action.params` |
+
+---
+
+## Examples
+
+**Find every Dockerfile** (read-only):
+
+```yaml
+reporker_action:
+  name: inventory
+  target_patterns: ["Dockerfile", "Dockerfile.*"]
+```
+
+**Find K8s manifests with low/medium priority class:**
+
+```yaml
+reporker_action:
+  name: priorityclass
+  target_patterns: ["*.yaml", "*.yml"]
+  content_grep: priorityClassName
+  params:
+    priority_classes: [medium, low]
+```
+
+**Append a line to every `requirements.txt`:**
+
+```yaml
+reporker_action:
+  name: line-append
+  target_patterns: ["requirements.txt*"]
+  params:
+    ensure_line: "# managed by reporker"
+```
+
+Then: `./reporker action && ./reporker publish`
+
+---
+
+## Built-in actions
+
+| Action | Mode | Output |
 |---|---|---|
-| `discovery` | glab | Get all repos in the group via the GitLab API |
-| `workspace` | git | Clone repos |
-| `scan` | Ansible | Find target files in every repo |
-| `action` | Ansible | Run pluggable task on every matched file |
-| `report` | Ansible | Write JSON reports to `ansible/reports/` |
-| `publish` | git | Branch → commit → push for every changed repo |
+| [`inventory`](ansible/actions/inventory/) | read-only | List of matched files per repo |
+| [`priorityclass`](ansible/actions/priorityclass/) | read-only | Manifests by priority class |
+| [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
+| [`noop`](ansible/actions/noop/) | read-only | Does nothing (for testing) |
 
-Run only the phases you need — tag them independently or chain them together.
+See [`ansible/actions/README.md`](ansible/actions/README.md) to add your own.
 
 ---
 
 ## Requirements
 
-- `ansible` ≥ 2.14
-- [`glab`](https://gitlab.com/gitlab-org/cli) (GitLab CLI)
-- `git`
-- `jq`
-- SSH key already configured for your GitLab instance
-
----
-
-## start
-
-```bash
-# 1. Clone reporker repo
-git clone <this-repo> reporker && cd reporker
-
-# 2. Store your GitLab personal access token (needs api scope — never committed)
-printf '%s' 'glpat-xxxxxxxxxxxx' > glab/token
-chmod 600 glab/token
-
-# 3. Authenticate the glab CLI
-cat glab/token | glab auth login --hostname gitlab.com --stdin
-
-# 4. Set your host, group ID, and action
-cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
-vim ansible/group_vars/all.yml
-
-# 5. Run
-cd ansible
-ansible-playbook -i inventory.ini playbooks/run.yml \
-  --tags discovery,workspace,scan,action,report
-```
-
----
-
-## Config
-
-All settings live in **`ansible/group_vars/all.yml`** (gitignored — copy from the example):
-
-```bash
-cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
-```
-
-```yaml
-gitlab:
-  host: gitlab.com           # your GitLab hostname
-  group_id: 12345            # numeric group ID
-  token_file: "{{ playbook_dir }}/../../glab/token"
-  repo_filter: []            # [] = whole group; ["api", "worker"] = only these repos
-
-paths:
-  workspace: "{{ playbook_dir }}/../workspace"
-  reports:   "{{ playbook_dir }}/../reports"
-
-git:
-  branch_name:    "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
-  commit_message: "chore: reporker automated change"
-
-reporker_action:
-  name: noop
-  target_patterns:
-    - "*.yaml"
-  content_grep: ""           # optional: only pass files containing this string to the action
-  params: {}
-```
-
-**`repo_filter`** limits which repos inside the group are cloned and scanned. Leave it empty to process the entire group.
-
-**`content_grep`** narrows the scan further: after `find` matches files by pattern, only files whose content contains this string are kept. This is what makes `scan.json` useful — instead of listing every YAML file, it lists only the ones you actually care about. Leave empty or omit to pass all matched files to the action.
-
----
-
-## Phases
-
-```bash
-cd ansible
-
-# Discover + clone only
-ansible-playbook -i inventory.ini playbooks/run.yml --tags discovery,workspace
-
-# Re-run scan/action/report against an already-cloned workspace
-ansible-playbook -i inventory.ini playbooks/run.yml --tags scan,action,report
-
-# Full
-ansible-playbook -i inventory.ini playbooks/run.yml \
-  --tags discovery,workspace,scan,action,report,publish
-```
-
-
-
-## Sample actions
-
-| Action | Mode | Description |
-|---|---|---|
-| [`noop`](ansible/actions/noop/) | read-only | touches nothing |
-| [`line-append`](ansible/actions/line-append/) | write | Idempotently appends a line to every matched file |
-| [`priorityclass`](ansible/actions/priorityclass/) | read-only | Finds K8s manifests using `priorityClassName: medium` or `low` |
-
----
-
-## Writing your own action
-
-1. Create `ansible/actions/<name>/tasks/main.yml`
-2. Set `reporker_action.name: <name>` in config
-
-Your tasks receive:
-
-| Variable | Description |
-|---|---|
-| `all_targets` | List of every matched file |
-| `targets_by_repo` | Dict: `repo_path → [file, …]` |
-| `repos_with_targets` | Repo paths that have at least one match |
-| `reporker_action.params` | Your custom params from config |
-
-Your tasks **must** set `changed_files` before finishing:
-
-```yaml
-- ansible.builtin.set_fact:
-    changed_files: []   # absolute paths you modified; [] for read-only actions
-```
-
-See [`ansible/actions/README.md`](ansible/actions/README.md) for the full doc.
-
----
-
-## Reports
-
-Written to `ansible/reports/` after each run:
-
-| File | Contents |
-|---|---|
-| `repos.json` | Raw GitLab API response |
-| `scan.json` | Matched files per repo |
-| `action.json` | Changed files summary |
-| `report.json` | Full pipeline summary |
-| `publish.json` | Branch / push results |
+- Ansible ≥ 2.14
+- [glab](https://gitlab.com/gitlab-org/cli) (GitLab CLI)
+- git, jq
+- SSH key configured for your GitLab instance (clone/push)
 
 ---
 

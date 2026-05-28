@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# reporker — bulk GitLab repo operations
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ANSIBLE_DIR="$ROOT/ansible"
+PLAYBOOK="$ANSIBLE_DIR/playbooks/run.yml"
+INVENTORY="$ANSIBLE_DIR/inventory.ini"
+CONFIG="$ANSIBLE_DIR/group_vars/all.yml"
+CONFIG_EXAMPLE="$ANSIBLE_DIR/group_vars/all.yml.example"
+
+usage() {
+  cat <<'EOF'
+reporker — scan and change files across every repo in a GitLab group
+
+Usage:
+  reporker init              Create local config from the example
+  reporker clone             Discover repos and clone/update them
+  reporker scan              Find target files (writes ansible/reports/scan.json)
+  reporker action            Scan, run your action, write reports
+  reporker publish           Branch, commit, and push changed repos
+  reporker run               clone → action (audit or modify, no push)
+  reporker all               Full pipeline including publish
+
+Setup (once):
+  1. reporker init
+  2. Edit ansible/group_vars/all.yml (GitLab host, group ID, action)
+  3. printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
+  4. cat glab/token | glab auth login --hostname gitlab.com --stdin
+
+Examples:
+  reporker clone && reporker action          # audit a group (read-only action)
+  reporker run                               # same, from scratch
+  reporker action && reporker publish        # apply changes and open branches
+
+Config:  ansible/group_vars/all.yml
+Reports: ansible/reports/
+Docs:    ansible/actions/README.md
+EOF
+}
+
+die() {
+  echo "reporker: $*" >&2
+  exit 1
+}
+
+require_config() {
+  [[ -f "$CONFIG" ]] || die "config not found — run: reporker init"
+}
+
+require_ansible() {
+  command -v ansible-playbook >/dev/null 2>&1 \
+    || die "ansible-playbook not found (need Ansible ≥ 2.14)"
+}
+
+run_playbook() {
+  local tags="$1"
+  require_ansible
+  require_config
+  (
+    cd "$ANSIBLE_DIR"
+    ansible-playbook -i "$INVENTORY" "$PLAYBOOK" --tags "$tags"
+  )
+}
+
+cmd_init() {
+  mkdir -p "$ROOT/glab" "$ANSIBLE_DIR/group_vars"
+  if [[ ! -f "$CONFIG" ]]; then
+    cp "$CONFIG_EXAMPLE" "$CONFIG"
+    echo "Created ansible/group_vars/all.yml"
+  else
+    echo "Config already exists: ansible/group_vars/all.yml"
+  fi
+  if [[ ! -f "$ROOT/glab/token" ]]; then
+    cat <<EOF
+
+Next steps:
+  1. Edit ansible/group_vars/all.yml
+  2. Store your GitLab token:
+       printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
+  3. Authenticate glab:
+       cat glab/token | glab auth login --hostname gitlab.com --stdin
+  4. Run: ./reporker clone && ./reporker action
+EOF
+  fi
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+
+  case "$cmd" in
+    init)    cmd_init ;;
+    clone)   run_playbook "discovery,workspace" ;;
+    scan)    run_playbook "scan" ;;
+    action)  run_playbook "scan,action,report" ;;
+    publish) run_playbook "publish" ;;
+    run)     run_playbook "discovery,workspace,scan,action,report" ;;
+    all)     run_playbook "discovery,workspace,scan,action,report,publish" ;;
+    -h|--help|help|"")
+      usage
+      ;;
+    *)
+      die "unknown command: $cmd (try: reporker --help)"
+      ;;
+  esac
+}
+
+main "$@"

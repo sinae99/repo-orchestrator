@@ -8,7 +8,7 @@
 
 - name: Scan | fail if workspace is missing
   ansible.builtin.fail:
-    msg: "Workspace directory not found at {{ paths.workspace }}. Run the workspace phase first (--tags workspace)."
+    msg: "Workspace directory not found at {{ paths.workspace }}. Run ./reporker clone first."
   when: not workspace_stat.stat.exists
 
 - name: Scan | list repositories in workspace

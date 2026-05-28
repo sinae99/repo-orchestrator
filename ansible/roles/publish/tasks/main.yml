@@ -2,12 +2,40 @@
 # Phase 6: Publish changes (branch -> commit -> push)
 # Only runs for repositories that changed in Phase 4.
 
+- name: Publish | check for changed.json
+  ansible.builtin.stat:
+    path: "{{ paths.reports }}/changed.json"
+  register: _changed_json_stat
+
+- name: Publish | load changed.json when running standalone
+  ansible.builtin.include_vars:
+    file: "{{ paths.reports }}/changed.json"
+    name: _changed_report
+  when:
+    - changed_repos is not defined
+    - _changed_json_stat.stat.exists
+
+- name: Publish | hydrate facts from changed.json
+  ansible.builtin.set_fact:
+    changed_repos: "{{ _changed_report.repos_changed | default([]) }}"
+    changed_targets_by_repo: "{{ _changed_report.changed_targets_by_repo | default({}) }}"
+  when:
+    - changed_repos is not defined
+    - _changed_json_stat.stat.exists
+
 - name: Publish | set safe defaults
   ansible.builtin.set_fact:
     changed_repos: "{{ changed_repos | default([]) }}"
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
 
-- name: Publish | detect dirty repos in workspace
+- name: Publish | fail if no change report exists
+  ansible.builtin.fail:
+    msg: "No change report found. Run reporker action first (with a write action)."
+  when:
+    - changed_repos | length == 0
+    - not _changed_json_stat.stat.exists
+
+- name: Publish | detect dirty repos in workspace (fallback)
   ansible.builtin.shell: |
     set -euo pipefail
     repo_dir="{{ item }}"
@@ -16,13 +44,15 @@
     fi
   args:
     executable: /bin/bash
-  loop: "{{ repos_with_targets | default([]) }}"
+  loop: "{{ changed_repos | default([]) }}"
   register: dirty_check
   changed_when: false
+  when: changed_repos | length == 0
 
 - name: Publish | set changed_repos from dirty repos (git status)
   ansible.builtin.set_fact:
-    changed_repos: "{{ dirty_check.results | map(attribute='stdout') | map('trim') | reject('equalto','') | list }}"
+    changed_repos: "{{ dirty_check.results | default([]) | map(attribute='stdout') | map('trim') | reject('equalto','') | list }}"
+  when: changed_repos | length == 0
 
 
 - name: Publish | skip if nothing changed

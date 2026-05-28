@@ -7,12 +7,40 @@
     state: directory
     mode: "0755"
 
+- name: Report | load scan report when running after a prior scan
+  ansible.builtin.include_vars:
+    file: "{{ paths.reports }}/scan.json"
+    name: _scan_report
+  when: targets_by_repo is not defined
+
+- name: Report | hydrate facts from scan report
+  ansible.builtin.set_fact:
+    targets_by_repo: "{{ _scan_report.targets_by_repo | default({}) }}"
+    repos: "{{ (_scan_report.targets_by_repo | default({})) | dict2items | map(attribute='key') | list }}"
+    repos_with_targets: >-
+      {{
+        (_scan_report.targets_by_repo | default({}))
+        | dict2items
+        | rejectattr('value', 'equalto', [])
+        | map(attribute='key')
+        | list
+      }}
+    repos_without_targets: >-
+      {{
+        (_scan_report.targets_by_repo | default({}))
+        | dict2items
+        | selectattr('value', 'equalto', [])
+        | map(attribute='key')
+        | list
+      }}
+  when: targets_by_repo is not defined
+
 - name: Report | assert required facts exist
   ansible.builtin.assert:
     that:
       - repos is defined
       - targets_by_repo is defined
-    fail_msg: "Missing required data. Ensure discovery, workspace, and scan ran before report."
+    fail_msg: "Missing required data. Run reporker scan or reporker action first."
 
 - name: Report | set safe defaults for optional facts
   ansible.builtin.set_fact:

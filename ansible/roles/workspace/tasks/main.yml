@@ -8,7 +8,7 @@
 
 - name: Workspace | fail if repos.txt is missing
   ansible.builtin.fail:
-    msg: "glab/repos.txt not found. Run the discovery phase first (--tags discovery)."
+    msg: "glab/repos.txt not found. Run ./reporker clone first."
   when: not repos_txt_stat.stat.exists
 
 - name: Workspace | read repos.txt

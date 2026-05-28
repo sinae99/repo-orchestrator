@@ -8,7 +8,7 @@
 
 - name: Action | fail if scan report missing
   ansible.builtin.fail:
-    msg: "scan.json not found at {{ paths.reports }}/scan.json. Run the scan phase first (--tags scan)."
+    msg: "scan.json not found at {{ paths.reports }}/scan.json. Run ./reporker scan or ./reporker action first."
   when: not scan_report_stat.stat.exists
 
 - name: Action | load scan report

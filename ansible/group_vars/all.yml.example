@@ -31,15 +31,28 @@ git:
 # reporker_action.content_grep    : (optional) only keep files whose content matches this string
 # reporker_action.params          : arbitrary dict available as reporker_action.params in tasks
 reporker_action:
-  name: noop
+  name: inventory
   target_patterns:
-    - "*.___reporker_no_match___"
+    - "Dockerfile"
+    - "Dockerfile.*"
   # content_grep: ""             # leave empty or omit to pass all matched files to the action
   params: {}
 
 # ---------------------------------------------------------------------------
 # Example action configs:
 # ---------------------------------------------------------------------------
+
+# Find K8s manifests with medium or low priorityClassName (read-only):
+# reporker_action:
+#   name: priorityclass
+#   target_patterns:
+#     - "*.yaml"
+#     - "*.yml"
+#   content_grep: priorityClassName
+#   params:
+#     priority_classes:
+#       - medium
+#       - low
 
 # Append a line to every requirements.txt:
 # reporker_action:
@@ -49,14 +62,3 @@ reporker_action:
 #   params:
 #     ensure_line: "# managed by reporker"
 #     insertafter: EOF
-
-# Find K8s manifests with medium or low priorityClassName (read-only):
-# reporker_action:
-#   name: priorityclass
-#   target_patterns:
-#     - "*.yaml"
-#     - "*.yml"
-#   params:
-#     priority_classes:
-#       - medium
-#       - low

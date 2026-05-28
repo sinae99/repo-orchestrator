@@ -1,0 +1,56 @@
+---
+# Action: inventory
+# Read-only audit — lists every file matched by the scan phase.
+# Use for "find all Dockerfiles", "list every requirements.txt", etc.
+#
+# Output: ansible/reports/inventory.json
+
+- name: Inventory | build per-repo counts
+  ansible.builtin.set_fact:
+    _inv_by_repo: >-
+      {{
+        dict(
+          targets_by_repo
+          | dict2items
+          | rejectattr('value', 'equalto', [])
+          | map(attribute='key')
+          | zip(
+              targets_by_repo
+              | dict2items
+              | rejectattr('value', 'equalto', [])
+              | map(attribute='value')
+              | map('length')
+              | list
+            )
+        )
+      }}
+
+- name: Inventory | write inventory.json
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/inventory.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "inventory",
+          "target_patterns": reporker_action.target_patterns | default([]),
+          "content_grep": reporker_action.content_grep | default(''),
+          "summary": {
+            "repos_with_matches": repos_with_targets | length,
+            "total_files": all_targets | length
+          },
+          "files_by_repo": targets_by_repo,
+          "counts_by_repo": _inv_by_repo | default({})
+        } | to_nice_json
+      }}
+
+- name: Inventory | print summary
+  ansible.builtin.debug:
+    msg: >-
+      Found {{ all_targets | length }} file(s) across
+      {{ repos_with_targets | length }} repo(s)
+      → {{ paths.reports }}/inventory.json
+
+- name: Inventory | set changed_files (read-only)
+  ansible.builtin.set_fact:
+    changed_files: []
