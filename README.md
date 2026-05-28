@@ -20,15 +20,14 @@ Works with gitlab.com or self-hosted. One config file, one CLI.
 
 ---
 
-## What it helps with
+## How it helps
 
-Things I've used it for (and things it maps to easily):
+Things I've used it for :
 
-- **Inventory audits** — list every `Dockerfile`, `docker-compose.yml`, or Helm chart in a group
+- **Inventory audits** — list every `Dockerfile`, `docker-compose.yml`, or any file in a group
 - **K8s manifest grep-at-scale** — find manifests with a specific `priorityClassName`, missing resource limits, old API versions, etc.
-- **Bulk text changes** — add a line to every `requirements.txt`, pin a base image comment, stamp a managed-by header
-- **Pre-migration checks** — before you change something platform-wide, see exactly which repos are affected
-- **Compliance sweeps** — search for patterns (`password:`, `image: latest`, deprecated annotations) across the whole group
+- **text changes** — add a line to every `requirements.txt`, pin a base image comment.
+- **Compliance sweeps** — search for patterns (`password:`, `image: latest`) across the whole group
 
 Read-only actions give you a report and stop. Write actions can open a branch per changed repo.
 
@@ -101,7 +100,7 @@ reporker_action:
 
 ---
 
-## Examples
+## Example Actions
 
 **Every Dockerfile in the group:**
 
@@ -145,7 +144,9 @@ Then `./reporker action && ./reporker publish`.
 | [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
 | [`noop`](ansible/actions/noop/) | read | Does nothing — useful for wiring |
 
-Need something else? Drop a folder in `ansible/actions/` and point `reporker_action.name` at it. See [`ansible/actions/README.md`](ansible/actions/README.md).
+Do u need a new action?
+
+Drop a folder in `ansible/actions/` and point `reporker_action.name` at it. See [`ansible/actions/README.md`](ansible/actions/README.md).
 
 ---
 
