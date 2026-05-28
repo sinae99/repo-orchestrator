@@ -1,10 +1,16 @@
 # reporker
 
-I built this because I kept hitting the same wall: **something needs to happen across a whole GitLab group**, and doing it repo by repo is not realistic.
+I built this because I faced this problem many  times: **something needs to happen across a whole GitLab group**, and doing it repo by repo is crazy.
 
-Maybe you need every `Dockerfile` before a base image bump. Maybe you need every K8s manifest that sets `priorityClassName: low` before a scheduling policy change. Maybe compliance asks "which services still run `image: latest`?" and nobody wants to click through 80 repos.
+Maybe I need to add user to every `Dockerfile`. 
 
-reporker handles that. Point it at a group, tell it what files to look for, pick an action. It clones everything, scans, runs your logic, and writes JSON reports. If the action actually changes files, it can branch and push for you.
+Maybe I need every K8s manifest that sets `priorityClassName: low` before a scheduling policy change.
+
+Maybe compliance asks "which services still run `image: latest`?" and nobody wants to click through 80 repos.
+
+*reporker* handles that.
+
+Point it at a group, tell it what files to look for, pick an action. It clones everything, scans, runs your logic, and writes JSON reports. If the action actually changes files, it can branch and push for you.
 
 ```
 GitLab group → clone → scan → action → report → (optional) publish
