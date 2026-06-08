@@ -1,6 +1,19 @@
 ---
 # Phase 1: Preconditions + repository discovery
 
+- name: Preflight | validate GitLab config
+  ansible.builtin.assert:
+    that:
+      - gitlab.host is defined
+      - gitlab.host | length > 0
+      - gitlab.group_id is defined
+      - (gitlab.group_id | string) | length > 0
+      - (gitlab.group_id | string) != "12345"
+    fail_msg: >-
+      Edit ansible/group_vars/all.yml first: set gitlab.host and a real
+      gitlab.group_id (12345 is the placeholder from the example config).
+    quiet: true
+
 - name: Preflight | verify glab is installed
   ansible.builtin.command: glab --version
   register: glab_version
@@ -26,6 +39,24 @@
     msg: "Token file not found at {{ gitlab.token_file }}. Create it: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token"
   when: not gitlab_token_stat.stat.exists
 
+# Read the token once and hand it to glab via GITLAB_TOKEN. This means a plain
+# token file is the only auth step — no separate `glab auth login` required.
+- name: Preflight | load GitLab token
+  ansible.builtin.slurp:
+    path: "{{ gitlab.token_file }}"
+  register: gitlab_token_slurp
+  no_log: true
+
+- name: Preflight | set GitLab token fact
+  ansible.builtin.set_fact:
+    gitlab_token: "{{ (gitlab_token_slurp.content | b64decode) | trim }}"
+  no_log: true
+
+- name: Preflight | fail if token file is empty
+  ansible.builtin.fail:
+    msg: "Token file {{ gitlab.token_file }} is empty. Write your token: printf '%s' 'glpat-xxx' > glab/token"
+  when: gitlab_token | length == 0
+
 - name: Ensure output directories exist
   ansible.builtin.file:
     path: "{{ item }}"
@@ -49,8 +80,11 @@
     glab api "groups/{{ gitlab.group_id }}/projects?per_page=100"
     --hostname {{ gitlab.host }}
     --paginate
+  environment:
+    GITLAB_TOKEN: "{{ gitlab_token }}"
   register: glab_projects
   changed_when: false
+  no_log: true
   when: not _repos_json_cached.stat.exists
 
 - name: Discovery | write repos.json (raw paginated output)

@@ -8,6 +8,10 @@ PLAYBOOK="$ANSIBLE_DIR/playbooks/run.yml"
 INVENTORY="$ANSIBLE_DIR/inventory.ini"
 CONFIG="$ANSIBLE_DIR/group_vars/all.yml"
 CONFIG_EXAMPLE="$ANSIBLE_DIR/group_vars/all.yml.example"
+TOKEN_FILE="$ROOT/glab/token"
+
+# Extra args forwarded to ansible-playbook (filled by --dry-run and `-- ...`).
+EXTRA_ARGS=()
 
 usage() {
   cat <<'EOF'
@@ -15,6 +19,7 @@ reporker — scan and change files across every repo in a GitLab group
 
 Usage:
   reporker init              Create local config from the example
+  reporker doctor            Check that everything is set up correctly
   reporker clone             Discover repos and clone/update them
   reporker scan              Find target files (writes ansible/reports/scan.json)
   reporker action            Scan, run your action, write reports
@@ -22,16 +27,22 @@ Usage:
   reporker run               clone → action (audit or modify, no push)
   reporker all               Full pipeline including publish
 
+Flags:
+  --dry-run                  Preview changes without writing them (ansible --check --diff)
+  -- <args...>               Forward the rest straight to ansible-playbook
+
 Setup (once):
   1. reporker init
   2. Edit ansible/group_vars/all.yml (GitLab host, group ID, action)
   3. printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
-  4. cat glab/token | glab auth login --hostname gitlab.com --stdin
+  4. reporker doctor
 
 Examples:
   reporker clone && reporker action          # audit a group (read-only action)
   reporker run                               # same, from scratch
+  reporker action --dry-run                  # preview a write action's changes
   reporker action && reporker publish        # apply changes and open branches
+  reporker action -- -e reporker_action.name=grep   # override config on the fly
 
 Config:  ansible/group_vars/all.yml
 Reports: ansible/reports/
@@ -53,13 +64,34 @@ require_ansible() {
     || die "ansible-playbook not found (need Ansible ≥ 2.14)"
 }
 
+# Split command flags from playbook pass-through args.
+# Sets the global EXTRA_ARGS array.
+parse_flags() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)
+        EXTRA_ARGS+=(--check --diff)
+        shift
+        ;;
+      --)
+        shift
+        EXTRA_ARGS+=("$@")
+        break
+        ;;
+      *)
+        die "unknown option: $1 (try: reporker --help)"
+        ;;
+    esac
+  done
+}
+
 run_playbook() {
   local tags="$1"
   require_ansible
   require_config
   (
     cd "$ANSIBLE_DIR"
-    ansible-playbook -i "$INVENTORY" "$PLAYBOOK" --tags "$tags"
+    ansible-playbook -i "$INVENTORY" "$PLAYBOOK" --tags "$tags" "${EXTRA_ARGS[@]}"
   )
 }
 
@@ -71,17 +103,68 @@ cmd_init() {
   else
     echo "Config already exists: ansible/group_vars/all.yml"
   fi
-  if [[ ! -f "$ROOT/glab/token" ]]; then
+  if [[ ! -f "$TOKEN_FILE" ]]; then
     cat <<EOF
 
 Next steps:
   1. Edit ansible/group_vars/all.yml
-  2. Store your GitLab token:
+  2. Store your GitLab token (this is the only auth step):
        printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
-  3. Authenticate glab:
-       cat glab/token | glab auth login --hostname gitlab.com --stdin
-  4. Run: ./reporker clone && ./reporker action
+  3. Check your setup:
+       reporker doctor
+  4. Run: reporker clone && reporker action
 EOF
+  fi
+}
+
+# Print a single check line: cmd_check "label" "command-to-test"
+cmd_check() {
+  local label="$1"; shift
+  if "$@" >/dev/null 2>&1; then
+    echo "  [ok]  $label"
+    return 0
+  fi
+  echo "  [--]  $label"
+  return 1
+}
+
+cmd_doctor() {
+  local fails=0
+
+  echo "Tools:"
+  cmd_check "ansible-playbook" command -v ansible-playbook || fails=$((fails + 1))
+  cmd_check "glab"             command -v glab             || fails=$((fails + 1))
+  cmd_check "git"              command -v git              || fails=$((fails + 1))
+  cmd_check "jq"               command -v jq               || fails=$((fails + 1))
+
+  echo "Config:"
+  if [[ -f "$CONFIG" ]]; then
+    echo "  [ok]  ansible/group_vars/all.yml exists"
+    if grep -qE '^\s*group_id:\s*12345\s*$' "$CONFIG"; then
+      echo "  [--]  group_id is still the example value (12345) — edit it"
+      fails=$((fails + 1))
+    else
+      echo "  [ok]  group_id has been set"
+    fi
+  else
+    echo "  [--]  config missing — run: reporker init"
+    fails=$((fails + 1))
+  fi
+
+  echo "Token:"
+  if [[ -s "$TOKEN_FILE" ]]; then
+    echo "  [ok]  glab/token exists"
+  else
+    echo "  [--]  glab/token missing or empty — printf '%s' 'glpat-xxx' > glab/token"
+    fails=$((fails + 1))
+  fi
+
+  echo
+  if [[ "$fails" -eq 0 ]]; then
+    echo "All checks passed. You're ready: reporker clone && reporker action"
+  else
+    echo "$fails check(s) failed. Fix the items marked [--] above."
+    return 1
   fi
 }
 
@@ -91,12 +174,13 @@ main() {
 
   case "$cmd" in
     init)    cmd_init ;;
-    clone)   run_playbook "discovery,workspace" ;;
-    scan)    run_playbook "scan" ;;
-    action)  run_playbook "scan,action,report" ;;
-    publish) run_playbook "publish" ;;
-    run)     run_playbook "discovery,workspace,scan,action,report" ;;
-    all)     run_playbook "discovery,workspace,scan,action,report,publish" ;;
+    doctor)  cmd_doctor ;;
+    clone)   parse_flags "$@"; run_playbook "discovery,workspace" ;;
+    scan)    parse_flags "$@"; run_playbook "scan" ;;
+    action)  parse_flags "$@"; run_playbook "scan,action,report" ;;
+    publish) parse_flags "$@"; run_playbook "publish" ;;
+    run)     parse_flags "$@"; run_playbook "discovery,workspace,scan,action,report" ;;
+    all)     parse_flags "$@"; run_playbook "discovery,workspace,scan,action,report,publish" ;;
     -h|--help|help|"")
       usage
       ;;

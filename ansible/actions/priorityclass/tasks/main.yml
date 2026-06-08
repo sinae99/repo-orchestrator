@@ -22,13 +22,14 @@
     msg: "Scanning {{ all_targets | length }} manifest(s) for priorityClassName: {{ _pc_classes | join(', ') }}"
 
 # For each manifest, emit a comma-separated list of matched classes (e.g. "medium,low"),
-# or an empty string when no class matches.
+# or an empty string when no class matches. The pattern tolerates optional
+# surrounding quotes and any spacing: priorityClassName: low / :low / : "low".
 - name: PriorityClass | grep each manifest for matching priority classes
   ansible.builtin.shell: |
     set -euo pipefail
     matched=""
     {% for cls in _pc_classes %}
-    if grep -qE '^\s*priorityClassName:\s+{{ cls }}\s*(#.*)?$' "{{ item }}" 2>/dev/null; then
+    if grep -qE "^[[:space:]]*priorityClassName:[[:space:]]*[\"']?{{ cls }}[\"']?[[:space:]]*(#.*)?$" "{{ item }}" 2>/dev/null; then
       matched="${matched}{{ cls }},"
     fi
     {% endfor %}
@@ -67,6 +68,7 @@
       }}
 
 - name: PriorityClass | write priorityclass.json report
+  check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/priorityclass.json"
     mode: "0644"

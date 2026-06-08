@@ -1,6 +1,8 @@
 ---
 # Action: line-append
-# Idempotently ensures a single line exists in every matched file.
+# Idempotently ensures a single line exists in every matched file. Running it
+# twice changes nothing the second time — only files actually edited are
+# reported in changed_files (so only those repos get published).
 #
 # Required params:
 #   reporker_action.params.ensure_line   — the line to insert

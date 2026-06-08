@@ -1,0 +1,98 @@
+---
+# Action: ensure-file
+# Write action. Makes sure a standard file exists in every repo. Use it to roll
+# out a CODEOWNERS, .editorconfig, issue template, or a CI snippet across a whole
+# group. Pairs naturally with the missing-file action (audit first, then fix).
+# Honors --dry-run via Ansible check mode.
+#
+# target_patterns are NOT used to choose where to write — this action operates on
+# every repo in the workspace. (Tip: set target_patterns to the file you are
+# ensuring so scan.json still shows you who already has it.)
+#
+# Required params:
+#   reporker_action.params.path      — path of the file inside each repo (e.g. "CODEOWNERS")
+# One of:
+#   reporker_action.params.content   — literal file contents
+#   reporker_action.params.src       — path to a local template file to copy
+# Optional params:
+#   reporker_action.params.overwrite — true = enforce contents, false = create only if missing (default false)
+#   reporker_action.params.mode      — file mode (default "0644")
+#
+# Output: ansible/reports/ensure-file.json
+
+- name: Ensure-file | require params
+  ansible.builtin.assert:
+    that:
+      - reporker_action.params is defined
+      - reporker_action.params.path is defined
+      - reporker_action.params.path | length > 0
+      - (reporker_action.params.content is defined) or (reporker_action.params.src is defined)
+    fail_msg: "Set reporker_action.params.path and one of params.content or params.src for the ensure-file action."
+    quiet: true
+
+- name: Ensure-file | resolve params
+  ansible.builtin.set_fact:
+    _ef_path: "{{ reporker_action.params.path }}"
+    _ef_content: "{{ reporker_action.params.content | default(none) }}"
+    _ef_src: "{{ reporker_action.params.src | default(none) }}"
+    _ef_overwrite: "{{ reporker_action.params.overwrite | default(false) | bool }}"
+    _ef_mode: "{{ reporker_action.params.mode | default('0644') }}"
+    _ef_repos: "{{ targets_by_repo | list }}"
+
+- name: Ensure-file | create parent directories
+  ansible.builtin.file:
+    path: "{{ (item ~ '/' ~ _ef_path) | dirname }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ _ef_repos }}"
+
+- name: Ensure-file | write the file into each repo
+  ansible.builtin.copy:
+    dest: "{{ item }}/{{ _ef_path }}"
+    content: "{{ _ef_content if _ef_content is not none else omit }}"
+    src: "{{ _ef_src if _ef_src is not none else omit }}"
+    force: "{{ _ef_overwrite }}"
+    mode: "{{ _ef_mode }}"
+  loop: "{{ _ef_repos }}"
+  register: _ef_results
+
+# Derive paths from the loop item (the repo dir) rather than the module's
+# 'dest', because in check mode the copy result for a new file omits 'dest'.
+- name: Ensure-file | set changed_files from results
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        _ef_results.results
+        | selectattr('changed', 'defined')
+        | selectattr('changed', 'equalto', true)
+        | map(attribute='item')
+        | map('regex_replace', '$', '/' ~ _ef_path)
+        | list
+      }}
+
+- name: Ensure-file | write ensure-file.json
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/ensure-file.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "ensure-file",
+          "path": _ef_path,
+          "overwrite": _ef_overwrite,
+          "check_mode": ansible_check_mode,
+          "summary": {
+            "repos_total": _ef_repos | length,
+            "files_written": changed_files | length
+          },
+          "changed_files": changed_files
+        } | to_nice_json
+      }}
+
+- name: Ensure-file | print summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ changed_files | length }} of {{ _ef_repos | length }} repo(s)
+      {{ 'would get' if ansible_check_mode else 'got' }} {{ _ef_path }}
+      → {{ paths.reports }}/ensure-file.json

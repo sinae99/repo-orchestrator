@@ -1,12 +1,10 @@
-# GitLab token (never commit)
-glab/token
-glab/hamgit-token
+# glab runtime files — tokens and generated clone lists never get committed.
+# Only the README in glab/ is tracked.
+glab/*
+!glab/README.md
 
 # Local config override (real host/group values stay out of git)
 ansible/group_vars/all.yml
-
-# Generated clone list
-glab/repos.txt
 
 # Working trees and reports
 ansible/workspace/*
@@ -18,7 +16,8 @@ ansible/reports/*
 *.retry
 ansible/.ansible-tmp/
 
-# Editors / OS
+# Editors / OS / agents
 .DS_Store
 .vscode/
 .idea/
+.claude/

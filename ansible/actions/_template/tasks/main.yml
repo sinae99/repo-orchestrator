@@ -1,0 +1,75 @@
+---
+# Action: _template
+# Copy this folder to start a new action:
+#   cp -r ansible/actions/_template ansible/actions/my-action
+# Then set reporker_action.name: my-action in ansible/group_vars/all.yml.
+#
+# What you get for free (set by the engine before this file runs):
+#   all_targets        - flat list of every matched file (absolute paths)
+#   targets_by_repo    - { repo_path: [file, ...] }, includes empty repos
+#   repos_with_targets - repo paths that matched at least one file
+#   reporker_action.params - your custom params from config
+#   paths.reports      - directory to write reports into
+#
+# The only hard requirement: set `changed_files` before you finish.
+#   - read-only action  -> changed_files: []
+#   - write action      -> the files you actually modified
+
+# --- 1. (optional) read your params, with sensible defaults ----------------
+- name: Template | resolve params
+  ansible.builtin.set_fact:
+    _tpl_greeting: "{{ reporker_action.params.greeting | default('hello from reporker') }}"
+
+# --- 2. do your work over the matched files --------------------------------
+# Read-only example: just count. Swap this for your real logic.
+- name: Template | inspect targets
+  ansible.builtin.debug:
+    msg: "{{ _tpl_greeting }} — {{ all_targets | length }} file(s) matched."
+
+# To MODIFY files instead, use a real module and capture results, e.g.:
+#
+# - name: Template | edit each target
+#   ansible.builtin.replace:
+#     path: "{{ item }}"
+#     regexp: "{{ reporker_action.params.regexp }}"
+#     replace: "{{ reporker_action.params.replace }}"
+#   loop: "{{ all_targets }}"
+#   register: _tpl_results
+#
+# then build changed_files from _tpl_results (see step 4).
+
+# --- 3. (recommended) write a JSON report ----------------------------------
+- name: Template | write _template.json
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/_template.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "_template",
+          "summary": {
+            "repos_with_matches": repos_with_targets | length,
+            "total_files": all_targets | length
+          },
+          "files_by_repo": targets_by_repo
+        } | to_nice_json
+      }}
+
+# --- 4. set changed_files (REQUIRED) ---------------------------------------
+# Read-only:
+- name: Template | set changed_files (read-only)
+  ansible.builtin.set_fact:
+    changed_files: []
+
+# Write action would instead derive it from a register, for example:
+#
+# - name: Template | set changed_files from results
+#   ansible.builtin.set_fact:
+#     changed_files: >-
+#       {{
+#         _tpl_results.results
+#         | selectattr('changed', 'equalto', true)
+#         | map(attribute='item')
+#         | list
+#       }}

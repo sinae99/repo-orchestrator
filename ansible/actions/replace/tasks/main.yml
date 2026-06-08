@@ -1,0 +1,74 @@
+---
+# Action: replace
+# Write action. Regex find-and-replace across every matched file. Use it to
+# bump a version, swap a registry/host, or rename a value group-wide.
+# Honors --dry-run (reporker action --dry-run) via Ansible check mode.
+#
+# Required params:
+#   reporker_action.params.regexp   — extended regex to match (ansible.builtin.replace)
+#   reporker_action.params.replace  — replacement string (may use \1, \2 backrefs)
+#
+# Output: ansible/reports/replace.json
+
+- name: Replace | require params
+  ansible.builtin.assert:
+    that:
+      - reporker_action.params is defined
+      - reporker_action.params.regexp is defined
+      - reporker_action.params.regexp | length > 0
+      - reporker_action.params.replace is defined
+    fail_msg: "Set reporker_action.params.regexp and reporker_action.params.replace for the replace action."
+    quiet: true
+
+- name: Replace | apply substitution in each target
+  ansible.builtin.replace:
+    path: "{{ item }}"
+    regexp: "{{ reporker_action.params.regexp }}"
+    replace: "{{ reporker_action.params.replace }}"
+  loop: "{{ all_targets }}"
+  register: _replace_results
+  when: all_targets | length > 0
+
+- name: Replace | set changed_files (none)
+  ansible.builtin.set_fact:
+    changed_files: []
+  when: all_targets | length == 0
+
+- name: Replace | set changed_files from results
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        _replace_results.results
+        | selectattr('changed', 'defined')
+        | selectattr('changed', 'equalto', true)
+        | map(attribute='item')
+        | list
+      }}
+  when: all_targets | length > 0
+
+- name: Replace | write replace.json
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/replace.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "replace",
+          "regexp": reporker_action.params.regexp,
+          "replace": reporker_action.params.replace,
+          "check_mode": ansible_check_mode,
+          "summary": {
+            "files_scanned": all_targets | length,
+            "files_changed": changed_files | length
+          },
+          "changed_files": changed_files
+        } | to_nice_json
+      }}
+
+- name: Replace | print summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ changed_files | length }} of {{ all_targets | length }} file(s)
+      {{ 'would change' if ansible_check_mode else 'changed' }}
+      → {{ paths.reports }}/replace.json

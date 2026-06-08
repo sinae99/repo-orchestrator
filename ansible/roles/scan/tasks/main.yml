@@ -93,6 +93,9 @@
     repos_without_targets: "{{ targets_by_repo | dict2items | selectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
 - name: Scan | write scan.json
+  # Always write the report, even under --dry-run, so the action stage can read
+  # it and a dry run produces a usable preview.
+  check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/scan.json"
     mode: "0644"

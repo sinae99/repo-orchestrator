@@ -7,8 +7,9 @@
 # --- GitLab connection (discovery uses glab API; clone/push use SSH) ---
 gitlab:
   host: gitlab.com                   # your GitLab instance hostname
-  group_id: 12345                    # numeric group ID to scan
+  group_id: 12345                    # numeric group ID to scan (change this!)
   # Personal access token (needs api scope). Path relative to playbook_dir.
+  # The token file is the only auth step — reporker hands it to glab for you.
   # Create with: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
   token_file: "{{ playbook_dir }}/../../glab/token"
   # Filter repos by name (last path segment, case-insensitive).
@@ -39,10 +40,34 @@ reporker_action:
   params: {}
 
 # ---------------------------------------------------------------------------
-# Example action configs:
+# Example action configs (copy one over the reporker_action block above).
+# Read actions just write a report; write actions can be published.
 # ---------------------------------------------------------------------------
 
-# Find K8s manifests with medium or low priorityClassName (read-only):
+# inventory (read) — list every matched file per repo:
+# reporker_action:
+#   name: inventory
+#   target_patterns:
+#     - "Dockerfile"
+#     - "docker-compose.y*ml"
+
+# grep (read) — find a pattern and record matching lines group-wide:
+# reporker_action:
+#   name: grep
+#   target_patterns:
+#     - "*.yaml"
+#     - "*.yml"
+#   params:
+#     pattern: "image:\\s*latest"
+#     ignore_case: false
+
+# missing-file (read) — which repos do NOT have a required file:
+# reporker_action:
+#   name: missing-file
+#   target_patterns:
+#     - ".gitlab-ci.yml"
+
+# priorityclass (read) — K8s manifests by priorityClassName:
 # reporker_action:
 #   name: priorityclass
 #   target_patterns:
@@ -54,7 +79,7 @@ reporker_action:
 #       - medium
 #       - low
 
-# Append a line to every requirements.txt:
+# line-append (write) — ensure a line exists in every requirements.txt:
 # reporker_action:
 #   name: line-append
 #   target_patterns:
@@ -62,3 +87,23 @@ reporker_action:
 #   params:
 #     ensure_line: "# managed by reporker"
 #     insertafter: EOF
+
+# replace (write) — regex find-and-replace across matched files:
+# reporker_action:
+#   name: replace
+#   target_patterns:
+#     - "Dockerfile"
+#   params:
+#     regexp: "^FROM python:3\\.9"
+#     replace: "FROM python:3.12"
+
+# ensure-file (write) — drop a standard file into every repo if missing:
+# reporker_action:
+#   name: ensure-file
+#   target_patterns:
+#     - "CODEOWNERS"
+#   params:
+#     path: CODEOWNERS
+#     content: |
+#       * @your-team
+#     overwrite: false

@@ -1,0 +1,90 @@
+---
+# Action: grep
+# Read-only compliance sweep. Records every matching line (with its line number)
+# for each target file. Use it to answer "where do we still have X?" across a
+# whole group — e.g. find `password:`, `image: latest`, a deprecated API, etc.
+#
+# Required params:
+#   reporker_action.params.pattern      — extended regex (grep -E) to search for
+# Optional params:
+#   reporker_action.params.ignore_case  — true/false (default false)
+#
+# Output: ansible/reports/grep.json
+# This action is read-only: changed_files is always [].
+
+- name: Grep | require params.pattern
+  ansible.builtin.assert:
+    that:
+      - reporker_action.params is defined
+      - reporker_action.params.pattern is defined
+      - reporker_action.params.pattern | length > 0
+    fail_msg: "Set reporker_action.params.pattern (the regex to search for) for the grep action."
+    quiet: true
+
+- name: Grep | resolve params
+  ansible.builtin.set_fact:
+    _grep_pattern: "{{ reporker_action.params.pattern }}"
+    _grep_ignorecase: "{{ reporker_action.params.ignore_case | default(false) | bool }}"
+
+- name: Grep | search each file
+  ansible.builtin.shell: >-
+    grep -nIE {{ '-i' if _grep_ignorecase else '' }} -e "$GREP_PATTERN" -- "{{ item }}" || true
+  environment:
+    GREP_PATTERN: "{{ _grep_pattern }}"
+  args:
+    executable: /bin/bash
+  loop: "{{ all_targets }}"
+  register: _grep
+  changed_when: false
+
+# Keep only files that actually matched something.
+- name: Grep | collect files with matches
+  ansible.builtin.set_fact:
+    _grep_hits: >-
+      {{
+        _grep.results | default([])
+        | selectattr('stdout_lines', 'defined')
+        | rejectattr('stdout_lines', 'equalto', [])
+        | list
+      }}
+
+- name: Grep | build matches map and totals
+  ansible.builtin.set_fact:
+    _grep_matches: >-
+      {{
+        dict(
+          _grep_hits | map(attribute='item')
+          | zip(_grep_hits | map(attribute='stdout_lines'))
+        )
+      }}
+    _grep_total: "{{ _grep_hits | map(attribute='stdout_lines') | map('length') | sum }}"
+
+- name: Grep | write grep.json
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/grep.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "grep",
+          "pattern": _grep_pattern,
+          "ignore_case": _grep_ignorecase,
+          "summary": {
+            "files_scanned": all_targets | length,
+            "files_with_matches": _grep_hits | length,
+            "total_matches": _grep_total | int
+          },
+          "matches_by_file": _grep_matches
+        } | to_nice_json
+      }}
+
+- name: Grep | print summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ _grep_total }} match(es) in {{ _grep_hits | length }} of
+      {{ all_targets | length }} file(s) → {{ paths.reports }}/grep.json
+
+- name: Grep | set changed_files (read-only)
+  ansible.builtin.set_fact:
+    changed_files: []

@@ -50,6 +50,7 @@
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
 
 - name: Report | write report.json (full run summary)
+  check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/report.json"
     mode: "0644"
@@ -86,6 +87,7 @@
       }}
 
 - name: Report | write changed.json (changed repos only)
+  check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/changed.json"
     mode: "0644"

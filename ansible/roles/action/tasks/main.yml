@@ -71,18 +71,27 @@
   ansible.builtin.set_fact:
     changed_files: "{{ changed_files | default([]) }}"
 
-- name: Action | build changed_targets_by_repo map
+# Attribute every changed file to the repo it lives under. This works whether
+# the file was one of the scanned targets (line-append, replace) or a brand new
+# file the action created (ensure-file), so all changes get published.
+- name: Action | attribute changed files to their repos
   ansible.builtin.set_fact:
-    changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) | combine({ repo: (targets_by_repo[repo] | intersect(changed_files)) }) }}"
-  loop: "{{ repos_with_targets }}"
+    changed_targets_by_repo: >-
+      {{
+        changed_targets_by_repo | default({})
+        | combine({
+            repo: (changed_files | select('match', (repo | regex_escape) ~ '/') | list)
+          })
+      }}
+  loop: "{{ targets_by_repo | list }}"
   loop_control:
     loop_var: repo
-  when: all_targets | length > 0
+  when: changed_files | length > 0
 
-- name: Action | empty change map when no targets
+- name: Action | empty change map when nothing changed
   ansible.builtin.set_fact:
     changed_targets_by_repo: {}
-  when: all_targets | length == 0
+  when: changed_files | length == 0
 
 - name: Action | derive changed_repos
   ansible.builtin.set_fact:
@@ -90,6 +99,7 @@
     changed_repos: "{{ changed_targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
 - name: Action | write action.json
+  check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/action.json"
     mode: "0644"
