@@ -3,17 +3,17 @@
 
 - name: Action | check scan report exists
   ansible.builtin.stat:
-    path: "{{ paths.reports }}/scan.json"
+    path: "{{ paths.reports }}/{{ reporker_report.scan }}"
   register: scan_report_stat
 
 - name: Action | fail if scan report missing
   ansible.builtin.fail:
-    msg: "scan.json not found at {{ paths.reports }}/scan.json. Run ./reporker scan or ./reporker action first."
+    msg: "Scan report not found at {{ paths.reports }}/{{ reporker_report.scan }}. Run ./reporker scan or ./reporker action first."
   when: not scan_report_stat.stat.exists
 
 - name: Action | load scan report
   ansible.builtin.include_vars:
-    file: "{{ paths.reports }}/scan.json"
+    file: "{{ paths.reports }}/{{ reporker_report.scan }}"
     name: scan_report
 
 - name: Action | set targets_by_repo and repos_with_targets from scan report
@@ -32,7 +32,7 @@
   ansible.builtin.assert:
     that:
       - targets_by_repo is defined
-    fail_msg: "targets_by_repo missing from scan.json."
+    fail_msg: "targets_by_repo missing from {{ reporker_report.scan }}."
 
 - name: Action | build flat target list
   ansible.builtin.set_fact:
@@ -98,10 +98,10 @@
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
     changed_repos: "{{ changed_targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
-- name: Action | write action.json
+- name: Action | write action metadata report
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/action.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.action_meta }}"
     mode: "0644"
     content: |
       {{

@@ -27,7 +27,7 @@
 - name: Missing-file | write missing-file.json
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/missing-file.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
     mode: "0644"
     content: |
       {{
@@ -50,7 +50,7 @@
     msg: >-
       {{ _mf_missing | length }} of {{ targets_by_repo | length }} repo(s)
       are missing {{ reporker_action.target_patterns | default([]) | join(', ') }}
-      → {{ paths.reports }}/missing-file.json
+      → {{ paths.reports }}/{{ reporker_report.action }}
 
 - name: Missing-file | set changed_files (read-only)
   ansible.builtin.set_fact:

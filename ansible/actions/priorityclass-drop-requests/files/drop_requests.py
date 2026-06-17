@@ -51,9 +51,19 @@ def pod_specs(obj: Any, specs: list[dict] | None = None) -> list[dict]:
     return specs
 
 
-def strip_requests(spec: dict, priority_classes: set[str]) -> bool:
-    priority = spec.get("priorityClassName")
-    if priority not in priority_classes:
+def effective_priority(spec: dict, missing_class: str = "medium") -> str:
+    raw = spec.get("priorityClassName")
+    if raw is None or raw == "":
+        return missing_class
+    return str(raw)
+
+
+def strip_requests(
+    spec: dict,
+    priority_classes: set[str],
+    missing_class: str = "medium",
+) -> bool:
+    if effective_priority(spec, missing_class) not in priority_classes:
         return False
 
     changed = False
@@ -73,13 +83,17 @@ def strip_requests(spec: dict, priority_classes: set[str]) -> bool:
     return changed
 
 
-def process_documents(docs: list[Any], priority_classes: set[str]) -> bool:
+def process_documents(
+    docs: list[Any],
+    priority_classes: set[str],
+    missing_class: str = "medium",
+) -> bool:
     changed = False
     for doc in docs:
         if not isinstance(doc, dict):
             continue
         for spec in pod_specs(doc):
-            if strip_requests(spec, priority_classes):
+            if strip_requests(spec, priority_classes, missing_class):
                 changed = True
     return changed
 
@@ -93,6 +107,11 @@ def main() -> int:
         "--priority-classes",
         default="medium,low",
         help="Comma-separated priorityClassName values (default: medium,low)",
+    )
+    parser.add_argument(
+        "--missing-class",
+        default="medium",
+        help="Effective class when priorityClassName is absent (default: medium)",
     )
     parser.add_argument(
         "--check",
@@ -113,7 +132,7 @@ def main() -> int:
     yaml_mod = _load_yaml()
     original, docs = load_documents(args.path, yaml_mod)
     updated = copy.deepcopy(docs)
-    would_change = process_documents(updated, priority_classes)
+    would_change = process_documents(updated, priority_classes, args.missing_class)
 
     if not would_change:
         return 0

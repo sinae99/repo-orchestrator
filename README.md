@@ -50,7 +50,7 @@ printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
 
 The token file is the only auth step — reporker hands it to `glab` for you, so there is no separate login.
 
-Reports go to `ansible/reports/`. Open **`ansible/reports/summary.txt`** first — it explains what was found and which file to read next.
+Reports go to `ansible/reports/`. Open **`ansible/reports/01-summary.txt`** first — it explains what was found and which numbered report to read next.
 
 To push changes:
 
@@ -139,15 +139,14 @@ reporker_action:
   target_patterns: [".gitlab-ci.yml"]
 ```
 
-**Manifests using low/medium priority class:**
+**Classify manifests by priority tier (missing priorityClassName → medium):**
 
 ```yaml
 reporker_action:
   name: priorityclass
   target_patterns: ["*.yaml", "*.yml"]
-  content_grep: priorityClassName
   params:
-    priority_classes: [medium, low]
+    priority_classes: [critical, high, medium, low]
 ```
 
 **Drop resource requests from medium/low priority pods (keep limits):**
@@ -156,7 +155,6 @@ reporker_action:
 reporker_action:
   name: priorityclass-drop-requests
   target_patterns: ["*.yaml", "*.yml"]
-  content_grep: priorityClassName
   params:
     priority_classes: [medium, low]
 
@@ -164,6 +162,8 @@ git:
   branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
   commit_message: "chore: remove resource requests from medium/low priority pods"
 ```
+
+Pods without `priorityClassName` are treated as **medium** for both actions.
 
 **Add a line to all requirements.txt files:**
 
@@ -208,8 +208,8 @@ Then `./reporker action && ./reporker publish` (or add `--dry-run` to preview fi
 |---|---|---|
 | [`inventory`](ansible/actions/inventory/) | read | Matched files per repo, with counts |
 | [`grep`](ansible/actions/grep/) | read | Matching lines (with line numbers) per file |
-| [`priorityclass`](ansible/actions/priorityclass/) | read | K8s manifests by priority class |
-| [`priorityclass-drop-requests`](ansible/actions/priorityclass-drop-requests/) | write | Drop requests from medium/low priority pods |
+| [`priorityclass`](ansible/actions/priorityclass/) | read | Classify manifests by effective priority (missing → medium) |
+| [`priorityclass-drop-requests`](ansible/actions/priorityclass-drop-requests/) | write | Drop requests from medium/low pods (missing class = medium) |
 | [`missing-file`](ansible/actions/missing-file/) | read | Repos that do NOT have a target file |
 | [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
 | [`replace`](ansible/actions/replace/) | write | Regex find-and-replace across files |
@@ -241,9 +241,20 @@ Run `./reporker check` and it will tell you what's missing.
 
 ## Reports
 
-After `reporker action`, open **`ansible/reports/summary.txt`** first — a compact one-glance sheet with what was found, what was done, next steps, and where to read details.
+After `reporker action`, open **`ansible/reports/01-summary.txt`** first. Reports are numbered in reading order — no index file.
 
-Then read the action report (`inventory.json`, `grep.json`, etc.) for details. See [`ansible/reports/README.md`](ansible/reports/README.md) for the full file list and reading order.
+**Priority-class runs** (example):
+
+| # | File | What |
+|---|---|---|
+| 01 | `01-summary.txt` | Human summary — start here |
+| 02 | `02-priorityclass-breakdown.json` | How pods split across critical / high / medium / low |
+| 03 | `03-<action>.json` | Action-specific results |
+| 04 | `04-scan.json` | Raw scan matches per repo |
+| 05 | `05-changed.json` | Changed files (when a write action modified files) |
+| 06 | `06-report.json` | Full machine-readable run record |
+
+Rule: manifests without `priorityClassName` count as **medium**.
 
 ---
 

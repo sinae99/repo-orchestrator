@@ -1,12 +1,51 @@
-REPORKER  run summary
-when      {{ generated_at }}
-target    {{ gitlab.host }}  group {{ gitlab.group_id }}
-action    {{ action_name }}  ({{ summary_mode }})
-scope     {{ summary_scope }}
+══════════════════════════════════════════════════════════════════════
+  REPORKER — run summary
+══════════════════════════════════════════════════════════════════════
 
-FOUND     {{ repos_total }} repos  ·  {{ repos_with_targets_count }} matched  ·  {{ repos_without_targets_count }} empty  ·  {{ files_matched }} files
-DONE      {{ files_changed }} changed  ·  {{ repos_changed }} repos  ·  {{ summary_outcome }}
-{% if summary_repos_line | length > 0 %}repos     {{ summary_repos_line }}
+  When       {{ generated_at }}
+  Target     {{ gitlab.host }}  ·  group {{ gitlab.group_id }}
+  Action     {{ action_name }}  ({{ summary_mode }})
+  Scope      {{ summary_scope }}
+
+──────────────────────────────────────────────────────────────────────
+  DISCOVERY
+──────────────────────────────────────────────────────────────────────
+  Repos in workspace ........ {{ repos_total }}
+  Repos with matches ........ {{ repos_with_targets_count }}
+  Repos with no matches ..... {{ repos_without_targets_count }}
+  Manifest files scanned .... {{ files_matched }}
+
+──────────────────────────────────────────────────────────────────────
+  RESULT
+──────────────────────────────────────────────────────────────────────
+  Files changed ............. {{ files_changed }}
+  Repos changed ............. {{ repos_changed }}
+  Outcome ................... {{ summary_outcome }}
+{% if summary_repos_line | length > 0 %}
+  Changed repos ............. {{ summary_repos_line }}
 {% endif %}
-next      {{ summary_next }}
-reports   {{ summary_reports }}
+{% if show_priority_breakdown | bool %}
+──────────────────────────────────────────────────────────────────────
+  POD PRIORITY BREAKDOWN
+  (missing priorityClassName → medium)
+──────────────────────────────────────────────────────────────────────
+  critical manifests ........ {{ priority_breakdown_summary.counts_per_class.critical | default(0) }}
+  high manifests ............ {{ priority_breakdown_summary.counts_per_class.high | default(0) }}
+  medium manifests .......... {{ priority_breakdown_summary.counts_per_class.medium | default(0) }}
+       explicit medium ...... {{ priority_breakdown_summary.medium_breakdown.explicit_priorityClassName_medium | default(0) }} pod template(s)
+       no priorityClass ..... {{ priority_breakdown_summary.medium_breakdown.implicit_no_priorityClassName | default(0) }} pod template(s)
+  low manifests ............. {{ priority_breakdown_summary.counts_per_class.low | default(0) }}
+  pod templates total ....... {{ priority_breakdown_summary.total_pod_templates | default(0) }}
+{% endif %}
+
+──────────────────────────────────────────────────────────────────────
+  NEXT STEP
+──────────────────────────────────────────────────────────────────────
+  {{ summary_next }}
+
+──────────────────────────────────────────────────────────────────────
+  REPORTS  (read in order)
+──────────────────────────────────────────────────────────────────────
+{% for item in summary_report_list %}
+  {{ item.num }}  {{ item.file }}  —  {{ item.label }}
+{% endfor %}

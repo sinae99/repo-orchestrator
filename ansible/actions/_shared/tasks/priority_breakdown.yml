@@ -1,0 +1,75 @@
+---
+# Shared: write numbered priority-class breakdown report (02-...).
+# Requires all_targets and reporker_report.breakdown.
+
+- name: PriorityBreakdown | resolve classifier script
+  ansible.builtin.set_fact:
+    _pc_breakdown_script: "{{ playbook_dir }}/../actions/_shared/files/priority_class.py"
+    _pc_breakdown_list: "{{ paths.reports }}/.priority_breakdown_targets"
+
+- name: PriorityBreakdown | write manifest path list
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ _pc_breakdown_list }}"
+    mode: "0600"
+    content: "{% for path in all_targets %}{{ path }}\n{% endfor %}"
+  when: all_targets | length > 0
+
+- name: PriorityBreakdown | write breakdown report
+  check_mode: false
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ _pc_breakdown_script }}"
+      - --output
+      - "{{ paths.reports }}/{{ reporker_report.breakdown }}"
+      - --missing-class
+      - "{{ reporker_action.params.missing_priority_class | default('medium') }}"
+      - --file-list
+      - "{{ _pc_breakdown_list }}"
+  register: _pc_breakdown_run
+  changed_when: false
+  when: all_targets | length > 0
+
+- name: PriorityBreakdown | write empty breakdown when no targets
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "rule": "manifests without priorityClassName are classified as medium",
+          "missing_priority_class_maps_to": reporker_action.params.missing_priority_class | default('medium'),
+          "priority_classes": ["critical", "high", "medium", "low"],
+          "summary": {
+            "total_manifests_scanned": 0,
+            "manifests_with_pod_templates": 0,
+            "total_pod_templates": 0,
+            "counts_per_class": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+            "medium_breakdown": {
+              "explicit_priorityClassName_medium": 0,
+              "implicit_no_priorityClassName": 0,
+              "total_medium_templates": 0
+            }
+          },
+          "findings": {"critical": [], "high": [], "medium": [], "low": []},
+          "other_classes": {},
+          "by_manifest": []
+        } | to_nice_json
+      }}
+  when: all_targets | length == 0
+
+- name: PriorityBreakdown | load breakdown for summary facts
+  ansible.builtin.slurp:
+    src: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
+  register: _pc_breakdown_slurp
+
+- name: PriorityBreakdown | set breakdown summary facts
+  ansible.builtin.set_fact:
+    priority_breakdown_summary: "{{ (_pc_breakdown_slurp.content | b64decode | from_json).summary }}"
+
+- name: PriorityBreakdown | remove temporary manifest list
+  ansible.builtin.file:
+    path: "{{ _pc_breakdown_list }}"
+    state: absent

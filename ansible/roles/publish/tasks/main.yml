@@ -2,14 +2,14 @@
 # Phase 6: Publish changes (branch -> commit -> push)
 # Only runs for repositories that changed in Phase 4.
 
-- name: Publish | check for changed.json
+- name: Publish | check for changed report
   ansible.builtin.stat:
-    path: "{{ paths.reports }}/changed.json"
+    path: "{{ paths.reports }}/{{ reporker_report.changed }}"
   register: _changed_json_stat
 
-- name: Publish | load changed.json when running standalone
+- name: Publish | load changed report when running standalone
   ansible.builtin.include_vars:
-    file: "{{ paths.reports }}/changed.json"
+    file: "{{ paths.reports }}/{{ reporker_report.changed }}"
     name: _changed_report
   when:
     - changed_repos is not defined
@@ -120,9 +120,9 @@
   register: publish_run
   when: changed_repos | length > 0
 
-- name: Publish | write publish.json (pretty)
+- name: Publish | write publish report
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/publish.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.publish }}"
     mode: "0644"
     content: "{{ (publish_run | default({'skipped': true, 'reason': 'no changed repos'}, true)) | to_nice_json }}\n"
 
@@ -135,5 +135,5 @@
 
 - name: Publish | debug publish completion
   ansible.builtin.debug:
-    msg: "Publish phase finished. See {{ paths.reports }}/publish.json and {{ paths.reports }}/summary.txt"
+    msg: "Publish phase finished. See {{ paths.reports }}/{{ reporker_report.publish }} and {{ paths.reports }}/{{ reporker_report.summary }}"
   when: changed_repos | length > 0

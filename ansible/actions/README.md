@@ -67,7 +67,7 @@ This is what the `publish` phase uses to decide which repos to branch and push. 
 Read-only actions earn their keep by writing a report. The convention is one JSON file per action:
 
 ```
-ansible/reports/<name>.json
+ansible/reports/<numbered-report>
 ```
 
 Use `to_nice_json` so it is human-readable:
@@ -75,7 +75,7 @@ Use `to_nice_json` so it is human-readable:
 ```yaml
 - name: write my-action.json
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/my-action.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
     mode: "0644"
     content: |
       {{
@@ -97,8 +97,8 @@ Write actions should behave under `reporker action --dry-run` (Ansible `--check 
 |---|---|---|
 | [`inventory`](inventory/) | read | Lists matched files per repo, with counts and the repos that matched nothing |
 | [`grep`](grep/) | read | Records matching lines (with line numbers) per file — compliance sweeps |
-| [`priorityclass`](priorityclass/) | read | K8s manifests grouped by `priorityClassName` |
-| [`priorityclass-drop-requests`](priorityclass-drop-requests/) | write | Drop resource requests from medium/low priority pods (keeps limits) |
+| [`priorityclass`](priorityclass/) | read | Manifests grouped by effective priority (missing → medium) + breakdown report |
+| [`priorityclass-drop-requests`](priorityclass-drop-requests/) | write | Drop requests from medium/low pods (missing class = medium) |
 | [`missing-file`](missing-file/) | read | Repos that do NOT contain a target file — governance audits |
 | [`line-append`](line-append/) | write | Idempotently ensures a line exists in each file |
 | [`replace`](replace/) | write | Regex find-and-replace across matched files |
@@ -127,7 +127,7 @@ reporker_action:
 4. Test it (read-only first, or with `--dry-run`):
 
 ```bash
-reporker scan        # see what gets matched (ansible/reports/scan.json)
+reporker scan        # see what gets matched (ansible/reports/03-scan.json or 04-scan.json)
 reporker action      # run your action
 ```
 

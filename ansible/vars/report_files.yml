@@ -1,0 +1,18 @@
+---
+# Numbered report filenames — read in order (01, 02, 03, …).
+reporker_is_priority_action: "{{ (reporker_action.name | default('')) is match('^priorityclass') }}"
+
+reporker_report:
+  summary: "01-summary.txt"
+  breakdown: "02-priorityclass-breakdown.json"
+  action: >-
+    {{
+      '03-' ~ (reporker_action.name | default('action')) ~ '.json'
+      if reporker_is_priority_action
+      else '02-' ~ (reporker_action.name | default('action')) ~ '.json'
+    }}
+  scan: "{{ '04-scan.json' if reporker_is_priority_action else '03-scan.json' }}"
+  changed: "{{ '05-changed.json' if reporker_is_priority_action else '04-changed.json' }}"
+  run: "{{ '06-report.json' if reporker_is_priority_action else '05-report.json' }}"
+  action_meta: "{{ '07-action.json' if reporker_is_priority_action else '06-action.json' }}"
+  publish: "{{ '08-publish.json' if reporker_is_priority_action else '07-publish.json' }}"

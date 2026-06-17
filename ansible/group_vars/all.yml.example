@@ -67,25 +67,27 @@ reporker_action:
 #   target_patterns:
 #     - ".gitlab-ci.yml"
 
-# priorityclass (read) — K8s manifests by priorityClassName:
+# priorityclass (read) — classify manifests by effective priorityClassName:
+# Missing priorityClassName is treated as medium. Produces a full breakdown report.
 # reporker_action:
 #   name: priorityclass
 #   target_patterns:
 #     - "*.yaml"
 #     - "*.yml"
-#   content_grep: priorityClassName
 #   params:
 #     priority_classes:
+#       - critical
+#       - high
 #       - medium
 #       - low
 
 # priorityclass-drop-requests (write) — drop requests, keep limits for medium/low:
+# Medium includes manifests with no priorityClassName.
 # reporker_action:
 #   name: priorityclass-drop-requests
 #   target_patterns:
 #     - "*.yaml"
 #     - "*.yml"
-#   content_grep: priorityClassName
 #   params:
 #     priority_classes:
 #       - medium

@@ -62,7 +62,7 @@
 - name: Grep | write grep.json
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/grep.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
     mode: "0644"
     content: |
       {{
@@ -83,7 +83,7 @@
   ansible.builtin.debug:
     msg: >-
       {{ _grep_total }} match(es) in {{ _grep_hits | length }} of
-      {{ all_targets | length }} file(s) → {{ paths.reports }}/grep.json
+      {{ all_targets | length }} file(s) → {{ paths.reports }}/{{ reporker_report.action }}
 
 - name: Grep | set changed_files (read-only)
   ansible.builtin.set_fact:

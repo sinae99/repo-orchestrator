@@ -1,96 +1,89 @@
 ---
 # Action: priorityclass
-# Read-only scan — finds Kubernetes YAML manifests that contain a
-# priorityClassName whose value matches one of the configured classes.
+# Read-only scan — classifies Kubernetes manifests by effective priorityClassName.
+# Rule: pod templates without priorityClassName are treated as medium.
 #
 # Configure in group_vars:
 #   reporker_action:
 #     name: priorityclass
 #     target_patterns: ["*.yaml", "*.yml"]
 #     params:
-#       priority_classes: [medium, low]   # defaults to [medium, low] if omitted
+#       priority_classes: [critical, high, medium, low]   # optional filter for matches_per_class
 #
-# Output: ansible/reports/priorityclass.json
-# This action is read-only: changed_files is always set to [].
+# Output:
+#   02-priorityclass-breakdown.json  — full division across all tiers
+#   03-priorityclass.json            — filtered view of configured classes
 
-- name: PriorityClass | resolve target priority classes
+- name: PriorityClass | resolve classifier script
   ansible.builtin.set_fact:
-    _pc_classes: "{{ reporker_action.params.priority_classes | default(['medium', 'low']) }}"
+    _pc_script: "{{ playbook_dir }}/../actions/_shared/files/priority_class.py"
+    _pc_classes: "{{ reporker_action.params.priority_classes | default(['critical', 'high', 'medium', 'low']) }}"
+    _pc_missing: "{{ reporker_action.params.missing_priority_class | default('medium') }}"
+
+- name: PriorityClass | require PyYAML
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - import yaml
+  changed_when: false
 
 - name: PriorityClass | debug scan start
   ansible.builtin.debug:
-    msg: "Scanning {{ all_targets | length }} manifest(s) for priorityClassName: {{ _pc_classes | join(', ') }}"
+    msg: >-
+      Classifying {{ all_targets | length }} manifest(s) by effective priorityClassName
+      (missing → {{ _pc_missing }}); tiers: {{ _pc_classes | join(', ') }}
 
-# For each manifest, emit a comma-separated list of matched classes (e.g. "medium,low"),
-# or an empty string when no class matches. The pattern tolerates optional
-# surrounding quotes and any spacing: priorityClassName: low / :low / : "low".
-- name: PriorityClass | grep each manifest for matching priority classes
-  ansible.builtin.shell: |
-    set -euo pipefail
-    matched=""
-    {% for cls in _pc_classes %}
-    if grep -qE "^[[:space:]]*priorityClassName:[[:space:]]*[\"']?{{ cls }}[\"']?[[:space:]]*(#.*)?$" "{{ item }}" 2>/dev/null; then
-      matched="${matched}{{ cls }},"
-    fi
-    {% endfor %}
-    echo "${matched%,}"
-  args:
-    executable: /bin/bash
-  loop: "{{ all_targets }}"
-  register: _pc_grep
-  changed_when: false
+- name: PriorityClass | write full priority breakdown report
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/priority_breakdown.yml"
 
-# Build a dict: { "medium": [...files...], "low": [...files...] }
-- name: PriorityClass | collect files per priority class
+- name: PriorityClass | load breakdown findings
+  ansible.builtin.slurp:
+    src: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
+  register: _pc_breakdown_raw
+
+- name: PriorityClass | set breakdown data
   ansible.builtin.set_fact:
-    _pc_findings: >-
-      {{
-        _pc_findings | default({}) | combine({
-          item: _pc_grep.results
-            | selectattr('stdout', 'defined')
-            | selectattr('stdout', 'search', item)
-            | map(attribute='item')
-            | list
-        })
-      }}
-  loop: "{{ _pc_classes }}"
+    _pc_breakdown: "{{ (_pc_breakdown_raw.content | b64decode | from_json) }}"
 
-# Build summary: { "medium": 3, "low": 2 }
-- name: PriorityClass | compute per-class counts
+- name: PriorityClass | filter findings to configured classes
   ansible.builtin.set_fact:
-    _pc_summary: >-
-      {{
-        dict(
-          _pc_classes | zip(
-            _pc_classes | map('extract', _pc_findings) | map('length') | list
-          )
-        )
-      }}
+    _pc_findings: "{{ dict(_pc_classes | zip(_pc_classes | map('extract', _pc_breakdown.findings) | list)) }}"
+    _pc_summary: "{{ dict(_pc_classes | zip(_pc_classes | map('extract', _pc_breakdown.findings) | map('length') | list)) }}"
 
-- name: PriorityClass | write priorityclass.json report
+- name: PriorityClass | write action report
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/priorityclass.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
     mode: "0644"
     content: |
       {{
         {
           "action": "priorityclass",
+          "rule": _pc_breakdown.rule,
           "priority_classes_searched": _pc_classes,
           "summary": {
             "total_manifests_scanned": all_targets | length,
-            "matches_per_class": _pc_summary
+            "manifests_with_pod_templates": _pc_breakdown.summary.manifests_with_pod_templates,
+            "matches_per_class": _pc_summary,
+            "full_breakdown": _pc_breakdown.summary.counts_per_class,
+            "medium_breakdown": _pc_breakdown.summary.medium_breakdown
           },
-          "findings": _pc_findings
+          "findings": _pc_findings,
+          "breakdown_report": reporker_report.breakdown
         } | to_nice_json
       }}
 
 - name: PriorityClass | print summary
   ansible.builtin.debug:
     msg: >-
-      {% for cls in _pc_classes %}
-      {{ cls }}: {{ _pc_findings[cls] | length }} manifest(s)  {% endfor %}
-      — report: {{ paths.reports }}/priorityclass.json
+      critical={{ _pc_breakdown.summary.counts_per_class.critical | default(0) }}
+      high={{ _pc_breakdown.summary.counts_per_class.high | default(0) }}
+      medium={{ _pc_breakdown.summary.counts_per_class.medium | default(0) }}
+      ({{ _pc_breakdown.summary.medium_breakdown.implicit_no_priorityClassName | default(0) }} without priorityClass)
+      low={{ _pc_breakdown.summary.counts_per_class.low | default(0) }}
+      — breakdown: {{ paths.reports }}/{{ reporker_report.breakdown }}
+      — action: {{ paths.reports }}/{{ reporker_report.action }}
 
 - name: PriorityClass | set changed_files (read-only — no modifications)
   ansible.builtin.set_fact:

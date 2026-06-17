@@ -73,7 +73,7 @@
 - name: Ensure-file | write ensure-file.json
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/ensure-file.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
     mode: "0644"
     content: |
       {{
@@ -95,4 +95,4 @@
     msg: >-
       {{ changed_files | length }} of {{ _ef_repos | length }} repo(s)
       {{ 'would get' if ansible_check_mode else 'got' }} {{ _ef_path }}
-      → {{ paths.reports }}/ensure-file.json
+      → {{ paths.reports }}/{{ reporker_report.action }}

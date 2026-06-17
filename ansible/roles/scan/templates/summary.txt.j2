@@ -1,8 +1,25 @@
-REPORKER  scan summary
-when      {{ generated_at }}
-scope     {{ summary_scope }}
+══════════════════════════════════════════════════════════════════════
+  REPORKER — scan summary
+══════════════════════════════════════════════════════════════════════
 
-FOUND     {{ repos_total }} repos  ·  {{ repos_with_targets_count }} matched  ·  {{ repos_without_targets_count }} empty  ·  {{ files_matched }} files
+  When       {{ generated_at }}
+  Scope      {{ summary_scope }}
 
-next      reporker action
-reports   scan.json
+──────────────────────────────────────────────────────────────────────
+  DISCOVERY
+──────────────────────────────────────────────────────────────────────
+  Repos in workspace ........ {{ repos_total }}
+  Repos with matches ........ {{ repos_with_targets_count }}
+  Repos with no matches ..... {{ repos_without_targets_count }}
+  Manifest files matched .... {{ files_matched }}
+
+──────────────────────────────────────────────────────────────────────
+  NEXT STEP
+──────────────────────────────────────────────────────────────────────
+  Run  reporker action  to classify manifests and produce reports.
+
+──────────────────────────────────────────────────────────────────────
+  REPORTS  (read in order)
+──────────────────────────────────────────────────────────────────────
+  01  {{ reporker_report.summary | default('01-summary.txt') }}  —  this file
+  02  {{ scan_report_file }}  —  scan matches per repo

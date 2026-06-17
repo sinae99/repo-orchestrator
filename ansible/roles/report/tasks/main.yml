@@ -9,7 +9,7 @@
 
 - name: Report | load scan report when running after a prior scan
   ansible.builtin.include_vars:
-    file: "{{ paths.reports }}/scan.json"
+    file: "{{ paths.reports }}/{{ reporker_report.scan }}"
     name: _scan_report
   when: targets_by_repo is not defined
 
@@ -79,22 +79,38 @@
         if _report_action_name in _report_write_actions
         else 'read'
       }}
-    _report_action_file: "{{ _report_action_name }}.json"
+    _report_action_file: "{{ reporker_report.action }}"
 
 - name: Report | check whether action report exists
   ansible.builtin.stat:
     path: "{{ paths.reports }}/{{ _report_action_file }}"
   register: _report_action_stat
 
-- name: Report | check whether publish report exists
+- name: Report | check whether breakdown report exists
   ansible.builtin.stat:
-    path: "{{ paths.reports }}/publish.json"
-  register: _report_publish_stat
+    path: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
+  register: _report_breakdown_stat
+  when: reporker_is_priority_action | bool
 
-- name: Report | write report.json (full run summary)
+- name: Report | load breakdown summary when present
+  ansible.builtin.slurp:
+    src: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
+  register: _report_breakdown_slurp
+  when:
+    - reporker_is_priority_action | bool
+    - _report_breakdown_stat.stat.exists | default(false)
+
+- name: Report | set breakdown summary fact
+  ansible.builtin.set_fact:
+    priority_breakdown_summary: "{{ (_report_breakdown_slurp.content | b64decode | from_json).summary }}"
+  when:
+    - reporker_is_priority_action | bool
+    - _report_breakdown_stat.stat.exists | default(false)
+
+- name: Report | write run report (full machine-readable summary)
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/report.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.run }}"
     mode: "0644"
     content: |
       {{
@@ -133,10 +149,10 @@
         } | to_nice_json
       }}
 
-- name: Report | write changed.json (changed repos only)
+- name: Report | write changed report (changed repos only)
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/changed.json"
+    dest: "{{ paths.reports }}/{{ reporker_report.changed }}"
     mode: "0644"
     content: |
       {{
@@ -150,70 +166,54 @@
         } | to_nice_json
       }}
 
-- name: Report | build reading order
+- name: Report | build numbered report list for summary
   ansible.builtin.set_fact:
-    _report_reading_order:
-      - order: 1
-        file: summary.txt
-        phase: overview
-        description: Human-readable run summary — read this first
-      - order: 2
-        file: "{{ _report_action_file }}"
-        phase: action
-        description: Action findings — main result for this run
-        present: "{{ _report_action_stat.stat.exists | default(false) }}"
-      - order: 3
-        file: scan.json
-        phase: scan
-        description: File matches per repo (raw scan output)
-        present: true
-      - order: 4
-        file: changed.json
-        phase: changes
-        description: Repos and files modified — input for reporker publish
-        present: "{{ (changed_repos | length) > 0 }}"
-      - order: 5
-        file: report.json
-        phase: run
-        description: Full machine-readable run record
-        present: true
-      - order: 6
-        file: index.json
-        phase: catalog
-        description: Catalog of every report file and reading order
-        present: true
-
-- name: Report | write index.json (report catalog)
-  check_mode: false
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/index.json"
-    mode: "0644"
-    content: |
+    _summary_report_list: >-
       {{
-        {
-          "generated_at": _report_generated_at,
-          "start_here": "summary.txt",
-          "action": {
-            "name": _report_action_name,
-            "mode": _report_action_mode,
-            "report_file": _report_action_file if _report_action_stat.stat.exists else none
-          },
-          "summary": {
-            "repos_total": repos | length,
-            "repos_with_targets": repos_with_targets | length,
-            "repos_without_targets": repos_without_targets | length,
-            "files_matched": _report_files_matched,
-            "files_changed": _report_files_changed,
-            "repos_changed": changed_repos | length,
-            "dry_run": _report_dry_run
-          },
-          "reading_order": _report_reading_order,
-          "reference": {
-            "repos.json": "Discovery cache — repo list from GitLab API",
-            "action.json": "Action metadata — counts and changed-file map",
-            "publish.json": "Branch and push results (after reporker publish)"
+        [
+          {
+            'num': '01',
+            'file': reporker_report.summary,
+            'label': 'Run summary (start here)'
           }
-        } | to_nice_json
+        ]
+        + (
+          [{
+            'num': '02',
+            'file': reporker_report.breakdown,
+            'label': 'Pod priority breakdown (critical / high / medium / low)'
+          }]
+          if reporker_is_priority_action | bool
+          else []
+        )
+        + (
+          [{
+            'num': '03' if reporker_is_priority_action | bool else '02',
+            'file': _report_action_file,
+            'label': 'Action results — ' ~ _report_action_name
+          }]
+          if _report_action_stat.stat.exists | default(false)
+          else []
+        )
+        + [{
+          'num': reporker_report.scan.split('-')[0],
+          'file': reporker_report.scan,
+          'label': 'Scan matches per repo'
+        }]
+        + (
+          [{
+            'num': reporker_report.changed.split('-')[0],
+            'file': reporker_report.changed,
+            'label': 'Changed files (input for reporker publish)'
+          }]
+          if (changed_repos | length) > 0
+          else []
+        )
+        + [{
+          'num': reporker_report.run.split('-')[0],
+          'file': reporker_report.run,
+          'label': 'Full run record (JSON)'
+        }]
       }}
 
 - name: Report | derive summary text fields
@@ -244,27 +244,20 @@
         if (changed_repos | length) > 0
         else ''
       }}
-    _summary_reports: >-
-      {{
-        (
-          [_report_action_file, 'scan.json', 'index.json']
-          + (['changed.json'] if (changed_repos | length) > 0 else [])
-        )
-        | reject('equalto', '')
-        | join('  →  ')
-        if _report_action_stat.stat.exists
-        else (
-          ['scan.json', 'index.json']
-          + (['changed.json'] if (changed_repos | length) > 0 else [])
-        ) | join('  →  ')
-      }}
     _summary_scope: >-
       {{
         (_report_target_patterns | join(', ') if _report_target_patterns | length > 0 else '—')
         + (
-          '  |  ' ~ _report_content_grep
-          if _report_content_grep | length > 0
-          else ''
+          '  |  grep: ' ~ _report_content_grep
+          if (
+            _report_content_grep | length > 0
+            and not (reporker_is_priority_action | bool)
+          )
+          else (
+            '  |  K8s workloads + priorityClassName (missing → medium)'
+            if (reporker_is_priority_action | bool)
+            else ''
+          )
         )
       }}
     _summary_mode: >-
@@ -277,7 +270,7 @@
   check_mode: false
   ansible.builtin.template:
     src: summary.txt.j2
-    dest: "{{ paths.reports }}/summary.txt"
+    dest: "{{ paths.reports }}/{{ reporker_report.summary }}"
     mode: "0644"
   vars:
     generated_at: "{{ _report_generated_at }}"
@@ -293,7 +286,9 @@
     summary_outcome: "{{ _summary_outcome }}"
     summary_repos_line: "{{ _summary_repos_line }}"
     summary_next: "{{ _summary_next }}"
-    summary_reports: "{{ _summary_reports }}"
+    summary_report_list: "{{ _summary_report_list }}"
+    priority_breakdown_summary: "{{ priority_breakdown_summary | default({}) }}"
+    show_priority_breakdown: "{{ (reporker_is_priority_action | bool) and (priority_breakdown_summary | default({}) | length > 0) }}"
 
 - name: Report | print summary
   ansible.builtin.debug:
@@ -301,4 +296,4 @@
       - "FOUND  {{ repos | length }} repos · {{ repos_with_targets | length }} matched · {{ _report_files_matched }} files"
       - "DONE   {{ _report_files_changed }} changed · {{ changed_repos | length }} repos · {{ _summary_outcome }}"
       - "NEXT   {{ _summary_next }}"
-      - "READ   {{ paths.reports }}/summary.txt"
+      - "READ   {{ paths.reports }}/{{ reporker_report.summary }}"

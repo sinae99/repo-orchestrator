@@ -21,7 +21,7 @@ Usage:
   reporker init              Create local config from the example
   reporker check             Verify tools, config, and token are ready
   reporker clone             Discover repos and clone/update them
-  reporker scan              Find target files (writes ansible/reports/scan.json)
+  reporker scan              Find target files (writes ansible/reports/04-scan.json)
   reporker action            Scan, run your action, write reports
   reporker publish           Branch, commit, and push changed repos
   reporker run               clone → action (audit or modify, no push)
@@ -45,7 +45,7 @@ Examples:
   reporker action -- -e reporker_action.name=grep   # override config on the fly
 
 Config:  ansible/group_vars/all.yml
-Reports: ansible/reports/summary.txt  (start here)
+Reports: ansible/reports/01-summary.txt  (start here)
 Docs:    ansible/actions/README.md
 EOF
 }
