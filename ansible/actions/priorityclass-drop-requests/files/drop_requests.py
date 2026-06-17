@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -25,15 +25,6 @@ def load_documents(path: str, yaml_mod):
         content = handle.read()
     docs = list(yaml_mod.safe_load_all(content))
     return content, docs
-
-
-def dump_documents(docs, yaml_mod) -> str:
-    return yaml_mod.dump_all(
-        docs,
-        default_flow_style=False,
-        sort_keys=False,
-        allow_unicode=True,
-    )
 
 
 def pod_specs(obj: Any, specs: list[dict] | None = None) -> list[dict]:
@@ -58,29 +49,155 @@ def effective_priority(spec: dict, missing_class: str = "medium") -> str:
     return str(raw)
 
 
-def strip_requests(
-    spec: dict,
+@dataclass(frozen=True)
+class _StripTarget:
+    section: str
+    occurrence: int
+
+
+def strip_targets(
+    docs: list[Any],
     priority_classes: set[str],
     missing_class: str = "medium",
-) -> bool:
-    if effective_priority(spec, missing_class) not in priority_classes:
-        return False
+) -> list[_StripTarget]:
+    targets: list[_StripTarget] = []
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        for spec in pod_specs(doc):
+            if effective_priority(spec, missing_class) not in priority_classes:
+                continue
+            for section in ("containers", "initContainers"):
+                occurrence = 0
+                for container in spec.get(section) or []:
+                    if not isinstance(container, dict):
+                        continue
+                    resources = container.get("resources")
+                    if isinstance(resources, dict) and "requests" in resources:
+                        targets.append(_StripTarget(section, occurrence))
+                    occurrence += 1
+    return targets
 
-    changed = False
-    for key in ("containers", "initContainers"):
-        for container in spec.get(key) or []:
-            if not isinstance(container, dict):
+
+def _line_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _strip_key(line: str) -> str | None:
+    stripped = line.lstrip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("- "):
+        body = stripped[2:]
+        if ":" in body:
+            return body.split(":", 1)[0].strip()
+        return None
+    if ":" in stripped:
+        return stripped.split(":", 1)[0].strip()
+    return None
+
+
+def _remove_requests_lines(content: str, targets: list[_StripTarget]) -> str:
+    if not targets:
+        return content
+
+    pending = {(t.section, t.occurrence) for t in targets}
+    lines = content.splitlines(keepends=True)
+    current_section: str | None = None
+    section_indent = -1
+    container_occurrence = -1
+    strip_requests = False
+    in_resources = False
+    resources_indent = -1
+    skip_indent = -1
+    keep: list[str] = []
+
+    for line in lines:
+        indent = _line_indent(line)
+        key = _strip_key(line)
+
+        if skip_indent >= 0:
+            if indent > skip_indent:
                 continue
-            resources = container.get("resources")
-            if not isinstance(resources, dict):
-                continue
-            if "requests" in resources:
-                del resources["requests"]
-                changed = True
-            if not resources:
-                del container["resources"]
-                changed = True
-    return changed
+            skip_indent = -1
+
+        if key in ("containers", "initContainers") and ":" in line.lstrip():
+            current_section = key
+            section_indent = indent
+            container_occurrence = -1
+            strip_requests = False
+            in_resources = False
+            keep.append(line)
+            continue
+
+        if (
+            current_section is not None
+            and line.lstrip().startswith("- ")
+            and indent >= section_indent
+        ):
+            container_occurrence += 1
+            target_key = (current_section, container_occurrence)
+            strip_requests = target_key in pending
+            if strip_requests:
+                pending.remove(target_key)
+            in_resources = False
+            keep.append(line)
+            continue
+
+        if (
+            current_section is not None
+            and indent <= section_indent
+            and not line.lstrip().startswith("- ")
+            and key not in ("containers", "initContainers")
+        ):
+            current_section = None
+            section_indent = -1
+            container_occurrence = -1
+            strip_requests = False
+            in_resources = False
+
+        if strip_requests and key == "resources" and ":" in line.lstrip():
+            in_resources = True
+            resources_indent = indent
+            keep.append(line)
+            continue
+
+        if strip_requests and in_resources and key == "requests" and ":" in line.lstrip():
+            skip_indent = indent
+            continue
+
+        if in_resources and indent <= resources_indent:
+            in_resources = False
+
+        keep.append(line)
+
+    cleaned: list[str] = []
+    idx = 0
+    while idx < len(keep):
+        line = keep[idx]
+        key = _strip_key(line)
+        if key != "resources" or ":" not in line.lstrip():
+            cleaned.append(line)
+            idx += 1
+            continue
+
+        resources_indent = _line_indent(line)
+        child_start = idx + 1
+        child_end = child_start
+        while child_end < len(keep):
+            child_indent = _line_indent(keep[child_end])
+            if child_indent <= resources_indent:
+                break
+            child_end += 1
+
+        if child_start == child_end:
+            idx += 1
+            continue
+
+        cleaned.extend(keep[idx:child_end])
+        idx = child_end
+
+    return "".join(cleaned)
 
 
 def process_documents(
@@ -88,14 +205,7 @@ def process_documents(
     priority_classes: set[str],
     missing_class: str = "medium",
 ) -> bool:
-    changed = False
-    for doc in docs:
-        if not isinstance(doc, dict):
-            continue
-        for spec in pod_specs(doc):
-            if strip_requests(spec, priority_classes, missing_class):
-                changed = True
-    return changed
+    return bool(strip_targets(docs, priority_classes, missing_class))
 
 
 def main() -> int:
@@ -131,16 +241,15 @@ def main() -> int:
 
     yaml_mod = _load_yaml()
     original, docs = load_documents(args.path, yaml_mod)
-    updated = copy.deepcopy(docs)
-    would_change = process_documents(updated, priority_classes, args.missing_class)
+    targets = strip_targets(docs, priority_classes, args.missing_class)
 
-    if not would_change:
+    if not targets:
         return 0
 
     if args.check:
         return 3
 
-    new_content = dump_documents(updated, yaml_mod)
+    new_content = _remove_requests_lines(original, targets)
     if new_content == original:
         return 0
 
