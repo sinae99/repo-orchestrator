@@ -1,14 +1,15 @@
 # Actions
 
-An **action** is the part you care about — the thing that actually runs on matched files. reporker handles discovery, cloning, and scanning. Your action either reports on what it found (read) or changes files (write).
+An **action** is the part that actually runs on matched files. 
+
+reporker handles discovery, cloning, and scanning. Your action either reports on what it found (read) or changes files (write).
 
 ```
 scan → action → report → (optional) publish
 ```
 
----
 
-## How I run an action
+## how to run an action
 
 1. Edit `ansible/group_vars/all.yml` — pick an action below, copy the block
 2. `./reporker clone && ./reporker action`
@@ -17,8 +18,7 @@ scan → action → report → (optional) publish
 If it's a write action and you want to push:
 
 ```bash
-./reporker action --dry-run    # see what would change
-./reporker action              # apply locally
+./reporker action
 ./reporker publish             # branch + push per changed repo
 ```
 
@@ -61,7 +61,7 @@ reporker_action:
     - ".gitlab-ci.yml"
 ```
 
-**Classify manifests by priority tier** (no `priorityClassName` → medium):
+**Classify manifests by priority tier**:
 
 ```yaml
 reporker_action:
@@ -77,7 +77,7 @@ reporker_action:
       - low
 ```
 
-**Drop resource requests from medium/low pods** (keeps limits):
+**Remove resource requests from medium/low pods**:
 
 ```yaml
 reporker_action:
@@ -106,53 +106,7 @@ reporker_action:
     ensure_line: "# managed by reporker"
 ```
 
-**Bump a base image everywhere:**
-
-```yaml
-reporker_action:
-  name: replace
-  target_patterns:
-    - "Dockerfile"
-  params:
-    regexp: "^FROM python:3\\.9"
-    replace: "FROM python:3.12"
-```
-
-**Drop a CODEOWNERS into every repo that lacks one:**
-
-```yaml
-reporker_action:
-  name: ensure-file
-  target_patterns:
-    - "CODEOWNERS"
-  params:
-    path: CODEOWNERS
-    content: |
-      * @your-team
-```
-
-Narrow targets before grep with `content_grep`:
-
-```yaml
-reporker_action:
-  name: grep
-  target_patterns: ["*.yaml", "*.yml"]
-  content_grep: "priorityClassName"
-  params:
-    pattern: "priorityClassName:\\s*low"
-```
-
-Override without editing config:
-
-```bash
-./reporker action -- -e reporker_action.name=grep -e 'reporker_action.params={pattern: "image: latest"}'
-```
-
-More examples in [`ansible/group_vars/all.yml.example`](../group_vars/all.yml.example).
-
----
-
-## What's built in
+## built in
 
 | Name | | Params |
 |---|---|---|
@@ -170,13 +124,7 @@ More examples in [`ansible/group_vars/all.yml.example`](../group_vars/all.yml.ex
 
 ## Writing your own action
 
-```bash
-cp -r ansible/actions/_template ansible/actions/my-action
-```
-
-Edit `ansible/actions/my-action/tasks/main.yml`, set `reporker_action.name: my-action` in config, test read-only first, then `--dry-run` for writes.
-
-Or tell your AI agent:
+tell your AI agent:
 
 > Read `ansible/actions/README.md`. Build a reporker action named `<name>` that `<goal>`. Copy `ansible/actions/_template`, follow the contract below, add an example to `ansible/group_vars/all.yml.example`.
 
