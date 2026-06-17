@@ -110,3 +110,32 @@
           "targets_by_repo": targets_by_repo
         } | to_nice_json
       }}
+
+- name: Scan | write summary.txt (scan-only entry point)
+  check_mode: false
+  ansible.builtin.template:
+    src: summary.txt.j2
+    dest: "{{ paths.reports }}/summary.txt"
+    mode: "0644"
+  vars:
+    generated_at: "{{ lookup('pipe', 'date -Iseconds') }}"
+    summary_scope: >-
+      {{
+        (reporker_action.target_patterns | default([]) | join(', ') if (reporker_action.target_patterns | default([]) | length) > 0 else '—')
+        + (
+          '  |  ' ~ (reporker_action.content_grep | default(''))
+          if (reporker_action.content_grep | default('') | length) > 0
+          else ''
+        )
+      }}
+    repos_total: "{{ repos | length }}"
+    repos_with_targets_count: "{{ repos_with_targets | length }}"
+    repos_without_targets_count: "{{ repos_without_targets | length }}"
+    files_matched: "{{ targets_by_repo.values() | list | flatten | length }}"
+
+- name: Scan | print summary
+  ansible.builtin.debug:
+    msg:
+      - "FOUND  {{ repos | length }} repos · {{ repos_with_targets | length }} matched · {{ targets_by_repo.values() | list | flatten | length }} files"
+      - "NEXT   reporker action"
+      - "READ   {{ paths.reports }}/summary.txt"

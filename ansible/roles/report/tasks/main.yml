@@ -48,6 +48,48 @@
     repos_without_targets:   "{{ repos_without_targets   | default([]) }}"
     changed_repos:           "{{ changed_repos           | default([]) }}"
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
+    changed_files:           "{{ changed_files           | default([]) }}"
+    all_targets: >-
+      {{
+        all_targets | default(
+          targets_by_repo.values() | list | flatten
+        )
+      }}
+
+- name: Report | derive report metadata
+  ansible.builtin.set_fact:
+    _report_action_name: "{{ reporker_action.name | default('noop') }}"
+    _report_write_actions:
+      - line-append
+      - replace
+      - ensure-file
+      - priorityclass-drop-requests
+    _report_files_matched: "{{ all_targets | length }}"
+    _report_files_changed: "{{ changed_files | length }}"
+    _report_generated_at: "{{ lookup('pipe', 'date -Iseconds') }}"
+    _report_dry_run: "{{ ansible_check_mode | default(false) | bool }}"
+    _report_content_grep: "{{ reporker_action.content_grep | default('') }}"
+    _report_target_patterns: "{{ reporker_action.target_patterns | default([]) }}"
+
+- name: Report | resolve action mode and report file
+  ansible.builtin.set_fact:
+    _report_action_mode: >-
+      {{
+        'write'
+        if _report_action_name in _report_write_actions
+        else 'read'
+      }}
+    _report_action_file: "{{ _report_action_name }}.json"
+
+- name: Report | check whether action report exists
+  ansible.builtin.stat:
+    path: "{{ paths.reports }}/{{ _report_action_file }}"
+  register: _report_action_stat
+
+- name: Report | check whether publish report exists
+  ansible.builtin.stat:
+    path: "{{ paths.reports }}/publish.json"
+  register: _report_publish_stat
 
 - name: Report | write report.json (full run summary)
   check_mode: false
@@ -57,6 +99,7 @@
     content: |
       {{
         {
+          "generated_at": _report_generated_at,
           "gitlab": {
             "host":        gitlab.host,
             "group_id":    gitlab.group_id,
@@ -71,14 +114,18 @@
             "commit_message": git.commit_message
           },
           "action": {
-            "name":            reporker_action.name | default('noop'),
-            "target_patterns": reporker_action.target_patterns | default([]),
+            "name":            _report_action_name,
+            "mode":            _report_action_mode,
+            "target_patterns": _report_target_patterns,
+            "content_grep":    _report_content_grep,
             "params":          reporker_action.params | default({})
           },
           "summary": {
             "repos_total":           repos | length,
             "repos_with_targets":    repos_with_targets | length,
             "repos_without_targets": repos_without_targets | length,
+            "files_matched":         _report_files_matched,
+            "files_changed":         _report_files_changed,
             "repos_changed":         changed_repos | length
           },
           "targets_by_repo":         targets_by_repo,
@@ -103,10 +150,155 @@
         } | to_nice_json
       }}
 
+- name: Report | build reading order
+  ansible.builtin.set_fact:
+    _report_reading_order:
+      - order: 1
+        file: summary.txt
+        phase: overview
+        description: Human-readable run summary — read this first
+      - order: 2
+        file: "{{ _report_action_file }}"
+        phase: action
+        description: Action findings — main result for this run
+        present: "{{ _report_action_stat.stat.exists | default(false) }}"
+      - order: 3
+        file: scan.json
+        phase: scan
+        description: File matches per repo (raw scan output)
+        present: true
+      - order: 4
+        file: changed.json
+        phase: changes
+        description: Repos and files modified — input for reporker publish
+        present: "{{ (changed_repos | length) > 0 }}"
+      - order: 5
+        file: report.json
+        phase: run
+        description: Full machine-readable run record
+        present: true
+      - order: 6
+        file: index.json
+        phase: catalog
+        description: Catalog of every report file and reading order
+        present: true
+
+- name: Report | write index.json (report catalog)
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/index.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "generated_at": _report_generated_at,
+          "start_here": "summary.txt",
+          "action": {
+            "name": _report_action_name,
+            "mode": _report_action_mode,
+            "report_file": _report_action_file if _report_action_stat.stat.exists else none
+          },
+          "summary": {
+            "repos_total": repos | length,
+            "repos_with_targets": repos_with_targets | length,
+            "repos_without_targets": repos_without_targets | length,
+            "files_matched": _report_files_matched,
+            "files_changed": _report_files_changed,
+            "repos_changed": changed_repos | length,
+            "dry_run": _report_dry_run
+          },
+          "reading_order": _report_reading_order,
+          "reference": {
+            "repos.json": "Discovery cache — repo list from GitLab API",
+            "action.json": "Action metadata — counts and changed-file map",
+            "publish.json": "Branch and push results (after reporker publish)"
+          }
+        } | to_nice_json
+      }}
+
+- name: Report | derive summary text fields
+  ansible.builtin.set_fact:
+    _summary_outcome: >-
+      {{
+        'publish pending'
+        if (changed_repos | length) > 0
+        else (
+          'no changes'
+          if _report_action_mode == 'write'
+          else 'read-only'
+        )
+      }}
+    _summary_next: >-
+      {{
+        'reporker publish'
+        if (changed_repos | length) > 0 and not _report_dry_run
+        else (
+          're-run without --dry-run, then reporker publish'
+          if (changed_repos | length) > 0
+          else '—'
+        )
+      }}
+    _summary_repos_line: >-
+      {{
+        changed_repos | map('basename') | join(', ')
+        if (changed_repos | length) > 0
+        else ''
+      }}
+    _summary_reports: >-
+      {{
+        (
+          [_report_action_file, 'scan.json', 'index.json']
+          + (['changed.json'] if (changed_repos | length) > 0 else [])
+        )
+        | reject('equalto', '')
+        | join('  →  ')
+        if _report_action_stat.stat.exists
+        else (
+          ['scan.json', 'index.json']
+          + (['changed.json'] if (changed_repos | length) > 0 else [])
+        ) | join('  →  ')
+      }}
+    _summary_scope: >-
+      {{
+        (_report_target_patterns | join(', ') if _report_target_patterns | length > 0 else '—')
+        + (
+          '  |  ' ~ _report_content_grep
+          if _report_content_grep | length > 0
+          else ''
+        )
+      }}
+    _summary_mode: >-
+      {{
+        ('audit' if _report_action_mode == 'read' else 'write')
+        + (', dry-run' if _report_dry_run else '')
+      }}
+
+- name: Report | write summary.txt (human-readable entry point)
+  check_mode: false
+  ansible.builtin.template:
+    src: summary.txt.j2
+    dest: "{{ paths.reports }}/summary.txt"
+    mode: "0644"
+  vars:
+    generated_at: "{{ _report_generated_at }}"
+    action_name: "{{ _report_action_name }}"
+    summary_mode: "{{ _summary_mode }}"
+    summary_scope: "{{ _summary_scope }}"
+    repos_total: "{{ repos | length }}"
+    repos_with_targets_count: "{{ repos_with_targets | length }}"
+    repos_without_targets_count: "{{ repos_without_targets | length }}"
+    files_matched: "{{ _report_files_matched }}"
+    files_changed: "{{ _report_files_changed }}"
+    repos_changed: "{{ changed_repos | length }}"
+    summary_outcome: "{{ _summary_outcome }}"
+    summary_repos_line: "{{ _summary_repos_line }}"
+    summary_next: "{{ _summary_next }}"
+    summary_reports: "{{ _summary_reports }}"
+
 - name: Report | print summary
   ansible.builtin.debug:
     msg:
-      - "Repos total         : {{ repos | length }}"
-      - "Repos with targets  : {{ repos_with_targets | length }}"
-      - "Repos changed       : {{ changed_repos | length }}"
-      - "Reports written to  : {{ paths.reports }}"
+      - "FOUND  {{ repos | length }} repos · {{ repos_with_targets | length }} matched · {{ _report_files_matched }} files"
+      - "DONE   {{ _report_files_changed }} changed · {{ changed_repos | length }} repos · {{ _summary_outcome }}"
+      - "NEXT   {{ _summary_next }}"
+      - "READ   {{ paths.reports }}/summary.txt"

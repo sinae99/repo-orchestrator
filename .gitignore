@@ -11,6 +11,7 @@ ansible/workspace/*
 !ansible/workspace/.keep
 ansible/reports/*
 !ansible/reports/.keep
+!ansible/reports/README.md
 
 # Ansible
 *.retry

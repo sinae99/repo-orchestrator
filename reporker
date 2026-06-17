@@ -19,7 +19,7 @@ reporker — scan and change files across every repo in a GitLab group
 
 Usage:
   reporker init              Create local config from the example
-  reporker doctor            Check that everything is set up correctly
+  reporker check             Verify tools, config, and token are ready
   reporker clone             Discover repos and clone/update them
   reporker scan              Find target files (writes ansible/reports/scan.json)
   reporker action            Scan, run your action, write reports
@@ -35,7 +35,7 @@ Setup (once):
   1. reporker init
   2. Edit ansible/group_vars/all.yml (GitLab host, group ID, action)
   3. printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
-  4. reporker doctor
+  4. reporker check
 
 Examples:
   reporker clone && reporker action          # audit a group (read-only action)
@@ -45,7 +45,7 @@ Examples:
   reporker action -- -e reporker_action.name=grep   # override config on the fly
 
 Config:  ansible/group_vars/all.yml
-Reports: ansible/reports/
+Reports: ansible/reports/summary.txt  (start here)
 Docs:    ansible/actions/README.md
 EOF
 }
@@ -111,14 +111,14 @@ Next steps:
   2. Store your GitLab token (this is the only auth step):
        printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
   3. Check your setup:
-       reporker doctor
+       reporker check
   4. Run: reporker clone && reporker action
 EOF
   fi
 }
 
-# Print a single check line: cmd_check "label" "command-to-test"
-cmd_check() {
+# Print a single check line: check_item "label" "command-to-test"
+check_item() {
   local label="$1"; shift
   if "$@" >/dev/null 2>&1; then
     echo "  [ok]  $label"
@@ -128,14 +128,14 @@ cmd_check() {
   return 1
 }
 
-cmd_doctor() {
+cmd_check() {
   local fails=0
 
   echo "Tools:"
-  cmd_check "ansible-playbook" command -v ansible-playbook || fails=$((fails + 1))
-  cmd_check "glab"             command -v glab             || fails=$((fails + 1))
-  cmd_check "git"              command -v git              || fails=$((fails + 1))
-  cmd_check "jq"               command -v jq               || fails=$((fails + 1))
+  check_item "ansible-playbook" command -v ansible-playbook || fails=$((fails + 1))
+  check_item "glab"             command -v glab             || fails=$((fails + 1))
+  check_item "git"              command -v git              || fails=$((fails + 1))
+  check_item "jq"               command -v jq               || fails=$((fails + 1))
 
   echo "Config:"
   if [[ -f "$CONFIG" ]]; then
@@ -174,7 +174,8 @@ main() {
 
   case "$cmd" in
     init)    cmd_init ;;
-    doctor)  cmd_doctor ;;
+    check)   cmd_check ;;
+    doctor)  echo "reporker: 'doctor' was renamed to 'check'" >&2; cmd_check ;;
     clone)   parse_flags "$@"; run_playbook "discovery,workspace" ;;
     scan)    parse_flags "$@"; run_playbook "scan" ;;
     action)  parse_flags "$@"; run_playbook "scan,action,report" ;;

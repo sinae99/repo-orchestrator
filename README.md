@@ -43,14 +43,14 @@ git clone https://github.com/sinae99/repo-orchestrator.git && cd repo-orchestrat
 
 printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
 
-./reporker doctor      # confirm everything is wired up
+./reporker check       # verify tools, config, and token
 ./reporker clone
 ./reporker action
 ```
 
 The token file is the only auth step — reporker hands it to `glab` for you, so there is no separate login.
 
-Reports go to `ansible/reports/`. For audits that's usually enough.
+Reports go to `ansible/reports/`. Open **`ansible/reports/summary.txt`** first — it explains what was found and which file to read next.
 
 To push changes:
 
@@ -66,7 +66,7 @@ To push changes:
 | Command | Does |
 |---|---|
 | `./reporker init` | Create local config from the example |
-| `./reporker doctor` | Check tools, config, and token are ready |
+| `./reporker check` | Verify tools, config, and token are ready |
 | `./reporker clone` | Discover repos + clone/update |
 | `./reporker scan` | Find target files only |
 | `./reporker action` | Scan, run action, write reports |
@@ -235,7 +235,15 @@ An action gets the matched files handed to it and only has to set `changed_files
 - git, jq
 - SSH key set up for your GitLab instance (clone/push use SSH; API discovery uses the token)
 
-Run `./reporker doctor` and it will tell you what's missing.
+Run `./reporker check` and it will tell you what's missing.
+
+---
+
+## Reports
+
+After `reporker action`, open **`ansible/reports/summary.txt`** first — a compact one-glance sheet with what was found, what was done, next steps, and where to read details.
+
+Then read the action report (`inventory.json`, `grep.json`, etc.) for details. See [`ansible/reports/README.md`](ansible/reports/README.md) for the full file list and reading order.
 
 ---
 

@@ -1,0 +1,12 @@
+REPORKER  run summary
+when      {{ generated_at }}
+target    {{ gitlab.host }}  group {{ gitlab.group_id }}
+action    {{ action_name }}  ({{ summary_mode }})
+scope     {{ summary_scope }}
+
+FOUND     {{ repos_total }} repos  ·  {{ repos_with_targets_count }} matched  ·  {{ repos_without_targets_count }} empty  ·  {{ files_matched }} files
+DONE      {{ files_changed }} changed  ·  {{ repos_changed }} repos  ·  {{ summary_outcome }}
+{% if summary_repos_line | length > 0 %}repos     {{ summary_repos_line }}
+{% endif %}
+next      {{ summary_next }}
+reports   {{ summary_reports }}

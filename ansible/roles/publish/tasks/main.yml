@@ -135,5 +135,5 @@
 
 - name: Publish | debug publish completion
   ansible.builtin.debug:
-    msg: "Publish phase finished. See {{ paths.reports }}/publish.json"
+    msg: "Publish phase finished. See {{ paths.reports }}/publish.json and {{ paths.reports }}/summary.txt"
   when: changed_repos | length > 0
