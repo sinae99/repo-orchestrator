@@ -17,6 +17,13 @@ ansible/reports/*
 *.retry
 ansible/.ansible-tmp/
 
+# Python
+__pycache__/
+*.py[cod]
+
+# Local test / temp dirs
+tmp*/
+
 # Editors / OS / agents
 .DS_Store
 .vscode/

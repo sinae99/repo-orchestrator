@@ -1,7 +1,12 @@
 # =============================================================================
 # reporker — configuration example
-# Copy this to group_vars/all.yml and fill in your real values.
-# group_vars/all.yml is gitignored so your credentials never get committed.
+#
+# Setup:
+#   ./reporker init          # copies this file to group_vars/all.yml
+#   edit group_vars/all.yml  # set gitlab.group_id and reporker_action
+#
+# Action recipes (copy-paste configs): ansible/actions/README.md
+# group_vars/all.yml is gitignored — your values stay local.
 # =============================================================================
 
 # --- GitLab connection (discovery uses glab API; clone/push use SSH) ---

@@ -1,30 +1,28 @@
 # Reports
 
-All reports live here. They are gitignored except this README.
+Run output lives here (gitignored except this file).
 
-**Start here:** `01-summary.txt`
+**Start with `01-summary.txt`** — it lists which numbered reports were produced and what to read next.
 
-Report filenames are **fixed** — they do not change when you switch actions. The action name lives inside `03-action.json`, not in the filename.
+Each `reporker scan` or `reporker action` clears previous numbered artifacts (`0*.json`, `0*.txt`). Discovery cache `repos.json` is kept between runs.
 
-Each `reporker scan` or `reporker action` clears previous numbered artifacts (`0*.json`, `0*.txt`). Discovery cache `repos.json` is kept.
+## Files
 
-## Run reports (read in order)
-
-| # | File | What |
+| # | File | Contents |
 |---|---|---|
-| 01 | `01-summary.txt` | Human summary — start here |
+| 01 | `01-summary.txt` | Human-readable summary |
 | 02 | `02-breakdown.json` | Pod priority split (priority-class actions only) |
 | 03 | `03-action.json` | Action-specific results |
 | 04 | `04-scan.json` | Scan matches per repo |
-| 05 | `05-changed.json` | Changed files (write actions with changes) |
+| 05 | `05-changed.json` | Changed files (write actions) |
 | 06 | `06-run.json` | Full machine-readable run record |
-| 07 | `07-meta.json` | Engine metadata (tasks file, counts) |
+| 07 | `07-meta.json` | Engine metadata |
 | 08 | `08-publish.json` | Publish results (after `reporker publish`) |
 
-Optional slots (02, 03, 05) are omitted from `01-summary.txt` when not produced.
+Slots 02, 03, and 05 are omitted from `01-summary.txt` when not produced.
 
-**Rule:** manifests without `priorityClassName` count as **medium** in priority-class actions.
+**Priority-class rule:** manifests without `priorityClassName` count as **medium**.
 
 ## Discovery cache
 
-`repos.json` — repo list from GitLab API (not numbered; reused across runs).
+`repos.json` — repo list from the GitLab API. Not numbered; reused across runs. Delete it to force a fresh fetch.

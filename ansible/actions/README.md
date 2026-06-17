@@ -1,6 +1,6 @@
 # Actions
 
-An **action** is the part of reporker you write. The pipeline handles discovery, cloning, and scanning — then runs your action on the matched files. Your action reports on them (read) or changes them (write).
+An **action** is the work reporker performs on scanned files—audit (read) or modify (write). The engine handles discovery, cloning, and scanning; you pick or write an action and configure it in `ansible/group_vars/all.yml`.
 
 ```
 scan → action → report → (optional) publish
@@ -8,87 +8,216 @@ scan → action → report → (optional) publish
 
 ---
 
-## For action authors (humans)
+## Run a built-in action
 
-1. **Clone reporker** (or fork it):
+### 1. Choose an action
 
-```bash
-git clone https://github.com/sinae99/repo-orchestrator.git
-cd repo-orchestrator
-./reporker init
-```
+Pick a recipe below and copy its `reporker_action` block into `ansible/group_vars/all.yml`. Every recipe assumes you have already run `./reporker init`.
 
-2. **Tell your AI agent what to build.** Paste something like:
-
-> Read `ansible/actions/README.md` in this repo. Build a new reporker action named `<my-action>` that `<describe the goal>`. Copy `ansible/actions/_template`, follow the action contract, and wire an example config block in `ansible/group_vars/all.yml.example`.
-
-3. **Test read-only first**, then write with dry-run:
+### 2. Clone and run
 
 ```bash
 ./reporker clone
-./reporker action                    # read-only audit
-./reporker action --dry-run          # preview file changes
-./reporker action && ./reporker publish
+./reporker action
+```
+
+Reports land in `ansible/reports/`. Start with **`01-summary.txt`**.
+
+### 3. Publish (write actions only)
+
+```bash
+./reporker action --dry-run          # preview diffs, no file changes
+./reporker action                      # apply changes locally
+./reporker publish                     # branch, commit, push per changed repo
+```
+
+Or run the full pipeline: `./reporker run` (no push) or `./reporker all` (with push).
+
+---
+
+## Recipes
+
+Copy one block into `ansible/group_vars/all.yml` under `reporker_action:`.
+
+### inventory — list matched files per repo
+
+```yaml
+reporker_action:
+  name: inventory
+  target_patterns:
+    - "Dockerfile"
+    - "Dockerfile.*"
+```
+
+### grep — search file contents group-wide
+
+```yaml
+reporker_action:
+  name: grep
+  target_patterns:
+    - "*.yaml"
+    - "*.yml"
+  params:
+    pattern: "image:\\s*latest"
+    ignore_case: false
+```
+
+Use `content_grep` at the top level to narrow targets before grep runs:
+
+```yaml
+reporker_action:
+  name: grep
+  target_patterns: ["*.yaml", "*.yml"]
+  content_grep: "priorityClassName"
+  params:
+    pattern: "priorityClassName:\\s*low"
+```
+
+### missing-file — repos without a required file
+
+```yaml
+reporker_action:
+  name: missing-file
+  target_patterns:
+    - ".gitlab-ci.yml"
+```
+
+Reports repos that **do not** contain the target file.
+
+### priorityclass — classify K8s manifests by priority tier
+
+Manifests without `priorityClassName` are treated as **medium**.
+
+```yaml
+reporker_action:
+  name: priorityclass
+  target_patterns:
+    - "*.yaml"
+    - "*.yml"
+  params:
+    priority_classes:
+      - critical
+      - high
+      - medium
+      - low
+```
+
+Produces `02-breakdown.json` with pod counts per tier.
+
+### priorityclass-drop-requests — remove requests from medium/low pods
+
+Keeps limits; drops `requests` for pods in the listed tiers (missing class = medium).
+
+```yaml
+reporker_action:
+  name: priorityclass-drop-requests
+  target_patterns:
+    - "*.yaml"
+    - "*.yml"
+  params:
+    priority_classes:
+      - medium
+      - low
+
+git:
+  branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: remove resource requests from medium/low priority pods"
+```
+
+### line-append — ensure a line exists in every matched file
+
+```yaml
+reporker_action:
+  name: line-append
+  target_patterns:
+    - "requirements.txt*"
+  params:
+    ensure_line: "# managed by reporker"
+    insertafter: EOF
+```
+
+### replace — regex find-and-replace
+
+```yaml
+reporker_action:
+  name: replace
+  target_patterns:
+    - "Dockerfile"
+  params:
+    regexp: "^FROM python:3\\.9"
+    replace: "FROM python:3.12"
+```
+
+### ensure-file — create a standard file in every repo
+
+```yaml
+reporker_action:
+  name: ensure-file
+  target_patterns:
+    - "CODEOWNERS"
+  params:
+    path: CODEOWNERS
+    content: |
+      * @your-team
+    overwrite: false
+```
+
+### noop — wiring test (does nothing)
+
+```yaml
+reporker_action:
+  name: noop
+  target_patterns:
+    - "README.md"
 ```
 
 ---
 
-## For AI agents building actions
+## Action reference
 
-Use this section as the source of truth when implementing a new action.
-
-### Layout
-
-```
-ansible/actions/<name>/tasks/main.yml
-```
-
-Register in config:
-
-```yaml
-reporker_action:
-  name: <name>
-  target_patterns: ["*.yaml"]
-  params: {}
-```
-
-Or point at any tasks file on disk:
-
-```yaml
-reporker_action:
-  tasks_file: /abs/path/to/tasks.yml
-```
-
-### Inputs (set by the engine before your tasks run)
-
-| Variable | Type | Meaning |
+| Name | Mode | Params |
 |---|---|---|
-| `all_targets` | list | Every matched file (absolute paths) |
-| `targets_by_repo` | dict | `repo_path → [file, …]` — includes repos with zero matches |
-| `repos_with_targets` | list | Repos that matched at least one file |
-| `reporker_action.params` | dict | Your `params:` from config |
-| `paths.reports` | string | Report output directory |
-| `reporker_report.action` | string | Always `03-action.json` — use this for the dest |
+| `inventory` | read | — |
+| `grep` | read | `pattern` (required), `ignore_case` |
+| `missing-file` | read | — |
+| `priorityclass` | read | `priority_classes` |
+| `priorityclass-drop-requests` | write | `priority_classes` |
+| `line-append` | write | `ensure_line`, `insertafter` |
+| `replace` | write | `regexp`, `replace` |
+| `ensure-file` | write | `path`, `content`, `overwrite` |
+| `noop` | read | — |
 
-Which files appear in `all_targets` is controlled by config, not your action:
+**Override on the CLI** without editing config:
 
-- `target_patterns` — file globs, searched recursively
-- `content_grep` — optional regex filter on file contents
+```bash
+./reporker action -- -e reporker_action.name=grep -e 'reporker_action.params={pattern: "image: latest"}'
+```
 
-### Contract (required)
+More examples: [`ansible/group_vars/all.yml.example`](../group_vars/all.yml.example)
 
-1. **Set `changed_files`** before finishing:
-   - Read-only → `[]`
-   - Write → list of absolute paths you actually modified
+---
 
-   Publish uses this to branch and push only changed repos.
+## Write a custom action
 
-2. **Write `03-action.json`** (recommended for read actions, required for write actions):
-   - Destination: `{{ paths.reports }}/{{ reporker_report.action }}`
-   - Include `"action": "<name>"` and a useful `summary` block
-   - Use `to_nice_json` for readable output
+```bash
+cp -r ansible/actions/_template ansible/actions/my-action
+```
 
-   Shortcut — set `_action_report` then include the shared helper:
+Edit `ansible/actions/my-action/tasks/main.yml`, set `reporker_action.name: my-action`, add an example block to `all.yml.example`, then test:
+
+```bash
+./reporker clone
+./reporker action              # read-only first
+./reporker action --dry-run    # preview writes
+```
+
+### Contract
+
+Every action must:
+
+1. **Set `changed_files`** before finishing — `[]` for read-only; absolute paths of modified files for write actions. Publish uses this to know which repos to push.
+
+2. **Write `03-action.json`** — destination `{{ paths.reports }}/{{ reporker_report.action }}`. Include `"action": "<name>"` and a useful `summary`. Shortcut:
 
 ```yaml
 - name: My action | build report
@@ -96,45 +225,33 @@ Which files appear in `all_targets` is controlled by config, not your action:
     _action_report:
       summary:
         total_files: "{{ all_targets | length }}"
-      files_by_repo: "{{ targets_by_repo }}"
 
-- name: My action | write 03-action.json
+- name: My action | write report
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 ```
 
-3. **Respect dry-run** — write actions must work with `reporker action --dry-run` (Ansible `--check --diff`). Built-in modules (`lineinfile`, `replace`, `copy`) support check mode. Shell tasks need `when: not ansible_check_mode` for destructive steps.
+3. **Respect dry-run** — write actions must work with `./reporker action --dry-run`. Built-in modules (`lineinfile`, `replace`, `copy`) support check mode. Shell tasks need `when: not ansible_check_mode` for destructive steps.
 
-### Reports (fixed slots — do not invent filenames)
+### Inputs (provided by the engine)
 
-Report names are **the same for every action**. Put the action name inside JSON, not in the filename.
+| Variable | Meaning |
+|---|---|
+| `all_targets` | Every matched file (absolute paths) |
+| `targets_by_repo` | `repo_path → [file, …]` — includes repos with zero matches |
+| `repos_with_targets` | Repos that matched at least one file |
+| `reporker_action.params` | Your `params:` from config |
+| `paths.reports` | Report output directory |
 
-| File | Who writes it | Purpose |
-|---|---|---|
-| `01-summary.txt` | report phase | Human entry point |
-| `02-breakdown.json` | priority actions only | Pod priority split |
-| `03-action.json` | **your action** | Action-specific results |
-| `04-scan.json` | scan phase | Matched files per repo |
-| `05-changed.json` | report phase | Changed files for publish |
-| `06-run.json` | report phase | Full run record |
-| `07-meta.json` | engine | Action metadata |
-| `08-publish.json` | publish phase | Push results |
+Which files appear in `all_targets` is controlled by config:
 
-Each run clears previous numbered artifacts (`0*.json`, `0*.txt`). `repos.json` (discovery cache) is kept.
+- `target_patterns` — file globs, recursive search
+- `content_grep` — optional regex filter on contents
 
-### Starter template
-
-```bash
-cp -r ansible/actions/_template ansible/actions/my-action
-```
-
-Edit `ansible/actions/my-action/tasks/main.yml`, then:
+Or point at any tasks file:
 
 ```yaml
 reporker_action:
-  name: my-action
-  target_patterns: ["*.tf"]
-  params:
-    foo: bar
+  tasks_file: /abs/path/to/tasks.yml
 ```
 
 ### Minimal write action
@@ -158,40 +275,44 @@ reporker_action:
         | list
       }}
 
-- name: My action | write 03-action.json
+- name: My action | write report
   ansible.builtin.set_fact:
     _action_report:
       summary:
         files_changed: "{{ changed_files | length }}"
       changed_files: "{{ changed_files }}"
 
-- name: My action | write report file
+- name: My action | write 03-action.json
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 ```
 
-### Checklist before finishing
-
-- [ ] `changed_files` is set (even if empty)
-- [ ] `03-action.json` written via `reporker_report.action`
-- [ ] Params validated with `assert` when required
-- [ ] Write actions tested with `--dry-run`
-- [ ] Example config added to `ansible/group_vars/all.yml.example`
-- [ ] Header comment: `# Action: <name> (read|write)`
+Shared helpers: [`_shared/`](_shared/) (`write_action_report.yml`, `priority_breakdown.yml`, `clear_reports.yml`).
 
 ---
 
-## Built-in actions
+## For AI agents
 
-| Name | Mode | Description |
+When building a new action, use this checklist:
+
+- [ ] Copy `_template` to `ansible/actions/<name>/`
+- [ ] Set `changed_files` (even if empty)
+- [ ] Write `03-action.json` via `reporker_report.action`
+- [ ] Validate required params with `assert`
+- [ ] Test write actions with `--dry-run`
+- [ ] Add example config to `ansible/group_vars/all.yml.example`
+- [ ] Header comment: `# Action: <name> (read|write)`
+
+**Report slots** (fixed filenames — do not invent new ones):
+
+| File | Writer | Purpose |
 |---|---|---|
-| [`inventory`](inventory/) | read | Matched files per repo, with counts |
-| [`grep`](grep/) | read | Matching lines (with line numbers) per file |
-| [`priorityclass`](priorityclass/) | read | Manifests by effective priority + breakdown |
-| [`priorityclass-drop-requests`](priorityclass-drop-requests/) | write | Drop requests from medium/low pods |
-| [`missing-file`](missing-file/) | read | Repos missing a target file |
-| [`line-append`](line-append/) | write | Idempotently ensures a line exists |
-| [`replace`](replace/) | write | Regex find-and-replace |
-| [`ensure-file`](ensure-file/) | write | Creates a standard file if missing |
-| [`noop`](noop/) | read | Does nothing — wiring/testing default |
+| `01-summary.txt` | report phase | Human entry point |
+| `02-breakdown.json` | priority actions | Pod priority split |
+| `03-action.json` | **your action** | Action results |
+| `04-scan.json` | scan phase | Matched files per repo |
+| `05-changed.json` | report phase | Changed files for publish |
+| `06-run.json` | report phase | Full run record |
 
-Shared helpers live in [`_shared/`](_shared/) (`write_action_report.yml`, `priority_breakdown.yml`, `clear_reports.yml`).
+Prompt template for an AI agent:
+
+> Read `ansible/actions/README.md`. Build a reporker action named `<name>` that `<goal>`. Copy `ansible/actions/_template`, follow the contract, and add an example config block to `ansible/group_vars/all.yml.example`.
