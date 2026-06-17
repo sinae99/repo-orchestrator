@@ -1,5 +1,14 @@
 ---
-# Phase 3: Target file discovery
+# Phase 3: Find target files in cloned repos.
+
+- name: Scan | ensure reports directory exists
+  ansible.builtin.file:
+    path: "{{ paths.reports }}"
+    state: directory
+    mode: "0755"
+
+- name: Scan | clear previous run reports
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/clear_reports.yml"
 
 - name: Scan | ensure workspace exists
   ansible.builtin.stat:
@@ -8,7 +17,7 @@
 
 - name: Scan | fail if workspace is missing
   ansible.builtin.fail:
-    msg: "Workspace directory not found at {{ paths.workspace }}. Run ./reporker clone first."
+    msg: "Workspace not found at {{ paths.workspace }}. Run ./reporker clone first."
   when: not workspace_stat.stat.exists
 
 - name: Scan | list repositories in workspace
@@ -36,7 +45,6 @@
   loop: "{{ repos }}"
   register: target_find_results
 
-# Build mapping: repo_path -> [file paths]
 - name: Scan | build targets_by_repo map
   ansible.builtin.set_fact:
     targets_by_repo: >-
@@ -53,9 +61,6 @@
         )
       }}
 
-# Skipped for priorityclass* actions — those need manifests WITHOUT priorityClassName too
-# (missing priorityClassName is treated as medium). Instead, keep K8s workload manifests
-# and anything that already sets priorityClassName.
 - name: Scan | grep targets for content match
   ansible.builtin.shell: |
     set -euo pipefail
@@ -128,7 +133,7 @@
 
 - name: Scan | derive repos_with_targets and repos_without_targets
   ansible.builtin.set_fact:
-    repos_with_targets:    "{{ targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
+    repos_with_targets: "{{ targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
     repos_without_targets: "{{ targets_by_repo | dict2items | selectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
 - name: Scan | write scan report
@@ -183,7 +188,6 @@
     repos_with_targets_count: "{{ repos_with_targets | length }}"
     repos_without_targets_count: "{{ repos_without_targets | length }}"
     files_matched: "{{ targets_by_repo.values() | list | flatten | length }}"
-    scan_report_file: "{{ reporker_report.scan }}"
 
 - name: Scan | print summary
   ansible.builtin.debug:

@@ -1,0 +1,27 @@
+---
+# Write 03-action.json. Set _action_report before including.
+#
+# Example:
+#   - set_fact:
+#       _action_report:
+#         summary: { "files": "{{ all_targets | length }}" }
+#         files_by_repo: "{{ targets_by_repo }}"
+#   - include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
+
+- name: WriteActionReport | require payload
+  ansible.builtin.assert:
+    that:
+      - _action_report is defined
+    fail_msg: "Set _action_report (dict) before including write_action_report.yml."
+
+- name: WriteActionReport | write action report
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
+    mode: "0644"
+    content: |
+      {{
+        _action_report | combine({
+          'action': reporker_action.name | default('unknown')
+        }) | to_nice_json
+      }}

@@ -1,16 +1,6 @@
 ---
-# Action: grep
-# Read-only compliance sweep. Records every matching line (with its line number)
-# for each target file. Use it to answer "where do we still have X?" across a
-# whole group — e.g. find `password:`, `image: latest`, a deprecated API, etc.
-#
-# Required params:
-#   reporker_action.params.pattern      — extended regex (grep -E) to search for
-# Optional params:
-#   reporker_action.params.ignore_case  — true/false (default false)
-#
-# Output: ansible/reports/grep.json
-# This action is read-only: changed_files is always [].
+# Action: grep (read-only)
+# Records matching lines (with line numbers) per file.
 
 - name: Grep | require params.pattern
   ansible.builtin.assert:
@@ -59,7 +49,7 @@
       }}
     _grep_total: "{{ _grep_hits | map(attribute='stdout_lines') | map('length') | sum }}"
 
-- name: Grep | write grep.json
+- name: Grep | write 03-action.json
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.action }}"

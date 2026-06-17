@@ -1,120 +1,133 @@
 # Actions
 
-An action is the part of reporker you write. The pipeline does the boring work — discover repos, clone them, find the files you care about — and then hands those files to your action. Your action decides what to do with them: report on them, or change them.
+An **action** is the part of reporker you write. The pipeline handles discovery, cloning, and scanning — then runs your action on the matched files. Your action reports on them (read) or changes them (write).
 
 ```
-scan (finds files) → action (your logic) → report → publish
+scan → action → report → (optional) publish
 ```
 
-If you can write a few lines of Ansible, you can write an action. If you can copy-paste, you can still write an action.
+---
 
-## Layout
+## For action authors (humans)
+
+1. **Clone reporker** (or fork it):
+
+```bash
+git clone https://github.com/sinae99/repo-orchestrator.git
+cd repo-orchestrator
+./reporker init
+```
+
+2. **Tell your AI agent what to build.** Paste something like:
+
+> Read `ansible/actions/README.md` in this repo. Build a new reporker action named `<my-action>` that `<describe the goal>`. Copy `ansible/actions/_template`, follow the action contract, and wire an example config block in `ansible/group_vars/all.yml.example`.
+
+3. **Test read-only first**, then write with dry-run:
+
+```bash
+./reporker clone
+./reporker action                    # read-only audit
+./reporker action --dry-run          # preview file changes
+./reporker action && ./reporker publish
+```
+
+---
+
+## For AI agents building actions
+
+Use this section as the source of truth when implementing a new action.
+
+### Layout
 
 ```
 ansible/actions/<name>/tasks/main.yml
 ```
 
-Pick the action by name in `ansible/group_vars/all.yml`:
+Register in config:
 
 ```yaml
 reporker_action:
   name: <name>
+  target_patterns: ["*.yaml"]
+  params: {}
 ```
 
-You can also point at any tasks file directly, anywhere on disk:
+Or point at any tasks file on disk:
 
 ```yaml
 reporker_action:
   tasks_file: /abs/path/to/tasks.yml
 ```
 
-## What your action receives
+### Inputs (set by the engine before your tasks run)
 
-By the time your tasks run, these variables are already set for you:
-
-| Variable | Type | What it is |
+| Variable | Type | Meaning |
 |---|---|---|
-| `all_targets` | list | Every matched file across all repos (flat list of absolute paths) |
-| `targets_by_repo` | dict | `repo_path → [file, …]`. Includes repos with an empty list, so you can see what is missing too |
-| `repos_with_targets` | list | Repo paths that matched at least one file |
-| `reporker_action.params` | dict | Whatever you put under `params:` in the config |
-| `paths.reports` | string | Where to write your JSON report |
+| `all_targets` | list | Every matched file (absolute paths) |
+| `targets_by_repo` | dict | `repo_path → [file, …]` — includes repos with zero matches |
+| `repos_with_targets` | list | Repos that matched at least one file |
+| `reporker_action.params` | dict | Your `params:` from config |
+| `paths.reports` | string | Report output directory |
+| `reporker_report.action` | string | Always `03-action.json` — use this for the dest |
 
-Which files land in `all_targets` is controlled entirely by config, not by your action:
+Which files appear in `all_targets` is controlled by config, not your action:
 
-- `target_patterns` — file globs, searched recursively in every repo
-- `content_grep` — optional regex; only files whose contents match are kept
+- `target_patterns` — file globs, searched recursively
+- `content_grep` — optional regex filter on file contents
 
-So the same action works on Dockerfiles, YAML manifests, `requirements.txt`, or anything else — you just change the patterns.
+### Contract (required)
 
-## The one rule: set `changed_files`
+1. **Set `changed_files`** before finishing:
+   - Read-only → `[]`
+   - Write → list of absolute paths you actually modified
 
-Every action must end by setting `changed_files` — the list of files it modified.
+   Publish uses this to branch and push only changed repos.
 
-- Read-only action? Set it to `[]`.
-- Write action? Set it to the files you actually changed.
+2. **Write `03-action.json`** (recommended for read actions, required for write actions):
+   - Destination: `{{ paths.reports }}/{{ reporker_report.action }}`
+   - Include `"action": "<name>"` and a useful `summary` block
+   - Use `to_nice_json` for readable output
 
-This is what the `publish` phase uses to decide which repos to branch and push. If you forget it, nothing gets published.
+   Shortcut — set `_action_report` then include the shared helper:
 
 ```yaml
-- name: set changed_files (read-only)
+- name: My action | build report
   ansible.builtin.set_fact:
-    changed_files: []
+    _action_report:
+      summary:
+        total_files: "{{ all_targets | length }}"
+      files_by_repo: "{{ targets_by_repo }}"
+
+- name: My action | write 03-action.json
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 ```
 
-## Writing a report (recommended)
+3. **Respect dry-run** — write actions must work with `reporker action --dry-run` (Ansible `--check --diff`). Built-in modules (`lineinfile`, `replace`, `copy`) support check mode. Shell tasks need `when: not ansible_check_mode` for destructive steps.
 
-Read-only actions earn their keep by writing a report. The convention is one JSON file per action:
+### Reports (fixed slots — do not invent filenames)
 
-```
-ansible/reports/<numbered-report>
-```
+Report names are **the same for every action**. Put the action name inside JSON, not in the filename.
 
-Use `to_nice_json` so it is human-readable:
-
-```yaml
-- name: write my-action.json
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
-    mode: "0644"
-    content: |
-      {{
-        {
-          "action": "my-action",
-          "summary": { "files": all_targets | length },
-          "files": all_targets
-        } | to_nice_json
-      }}
-```
-
-## Dry run
-
-Write actions should behave under `reporker action --dry-run` (Ansible `--check --diff`). The built-in modules (`lineinfile`, `replace`, `copy`) already support check mode and will show a diff without touching files. If you shell out, guard real changes with `when: not ansible_check_mode`.
-
-## Built-in actions
-
-| Name | Mode | Description |
+| File | Who writes it | Purpose |
 |---|---|---|
-| [`inventory`](inventory/) | read | Lists matched files per repo, with counts and the repos that matched nothing |
-| [`grep`](grep/) | read | Records matching lines (with line numbers) per file — compliance sweeps |
-| [`priorityclass`](priorityclass/) | read | Manifests grouped by effective priority (missing → medium) + breakdown report |
-| [`priorityclass-drop-requests`](priorityclass-drop-requests/) | write | Drop requests from medium/low pods (missing class = medium) |
-| [`missing-file`](missing-file/) | read | Repos that do NOT contain a target file — governance audits |
-| [`line-append`](line-append/) | write | Idempotently ensures a line exists in each file |
-| [`replace`](replace/) | write | Regex find-and-replace across matched files |
-| [`ensure-file`](ensure-file/) | write | Creates a standard file in every repo if missing |
-| [`noop`](noop/) | read | Does nothing — safe default for wiring/testing |
+| `01-summary.txt` | report phase | Human entry point |
+| `02-breakdown.json` | priority actions only | Pod priority split |
+| `03-action.json` | **your action** | Action-specific results |
+| `04-scan.json` | scan phase | Matched files per repo |
+| `05-changed.json` | report phase | Changed files for publish |
+| `06-run.json` | report phase | Full run record |
+| `07-meta.json` | engine | Action metadata |
+| `08-publish.json` | publish phase | Push results |
 
-## Add your own
+Each run clears previous numbered artifacts (`0*.json`, `0*.txt`). `repos.json` (discovery cache) is kept.
 
-1. Copy the template:
+### Starter template
 
 ```bash
 cp -r ansible/actions/_template ansible/actions/my-action
 ```
 
-2. Edit `ansible/actions/my-action/tasks/main.yml`.
-3. Point the config at it and pick your patterns:
+Edit `ansible/actions/my-action/tasks/main.yml`, then:
 
 ```yaml
 reporker_action:
@@ -124,17 +137,10 @@ reporker_action:
     foo: bar
 ```
 
-4. Test it (read-only first, or with `--dry-run`):
-
-```bash
-reporker scan        # see what gets matched (ansible/reports/03-scan.json or 04-scan.json)
-reporker action      # run your action
-```
-
-The [`_template`](_template/) action is a fully commented starting point. The shortest possible real action looks like this:
+### Minimal write action
 
 ```yaml
-- name: My action | ensure a line in each target
+- name: My action | edit each target
   ansible.builtin.lineinfile:
     path: "{{ item }}"
     line: "# touched by reporker"
@@ -142,7 +148,7 @@ The [`_template`](_template/) action is a fully commented starting point. The sh
   loop: "{{ all_targets }}"
   register: my_results
 
-- name: My action | report what changed
+- name: My action | set changed_files
   ansible.builtin.set_fact:
     changed_files: >-
       {{
@@ -151,4 +157,41 @@ The [`_template`](_template/) action is a fully commented starting point. The sh
         | map(attribute='item')
         | list
       }}
+
+- name: My action | write 03-action.json
+  ansible.builtin.set_fact:
+    _action_report:
+      summary:
+        files_changed: "{{ changed_files | length }}"
+      changed_files: "{{ changed_files }}"
+
+- name: My action | write report file
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 ```
+
+### Checklist before finishing
+
+- [ ] `changed_files` is set (even if empty)
+- [ ] `03-action.json` written via `reporker_report.action`
+- [ ] Params validated with `assert` when required
+- [ ] Write actions tested with `--dry-run`
+- [ ] Example config added to `ansible/group_vars/all.yml.example`
+- [ ] Header comment: `# Action: <name> (read|write)`
+
+---
+
+## Built-in actions
+
+| Name | Mode | Description |
+|---|---|---|
+| [`inventory`](inventory/) | read | Matched files per repo, with counts |
+| [`grep`](grep/) | read | Matching lines (with line numbers) per file |
+| [`priorityclass`](priorityclass/) | read | Manifests by effective priority + breakdown |
+| [`priorityclass-drop-requests`](priorityclass-drop-requests/) | write | Drop requests from medium/low pods |
+| [`missing-file`](missing-file/) | read | Repos missing a target file |
+| [`line-append`](line-append/) | write | Idempotently ensures a line exists |
+| [`replace`](replace/) | write | Regex find-and-replace |
+| [`ensure-file`](ensure-file/) | write | Creates a standard file if missing |
+| [`noop`](noop/) | read | Does nothing — wiring/testing default |
+
+Shared helpers live in [`_shared/`](_shared/) (`write_action_report.yml`, `priority_breakdown.yml`, `clear_reports.yml`).

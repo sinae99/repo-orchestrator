@@ -11,8 +11,8 @@
 #       priority_classes: [critical, high, medium, low]   # optional filter for matches_per_class
 #
 # Output:
-#   02-priorityclass-breakdown.json  — full division across all tiers
-#   03-priorityclass.json            — filtered view of configured classes
+#   02-breakdown.json  — full division across all tiers
+#   03-action.json   — filtered view of configured classes
 
 - name: PriorityClass | resolve classifier script
   ansible.builtin.set_fact:

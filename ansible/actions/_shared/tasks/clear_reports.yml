@@ -1,0 +1,19 @@
+---
+# Remove numbered report artifacts from a previous run.
+# Preserves repos.json (discovery cache) and other non-run files.
+
+- name: ClearReports | find stale numbered artifacts
+  ansible.builtin.find:
+    paths: "{{ paths.reports }}"
+    patterns:
+      - "0*.json"
+      - "0*.txt"
+  register: _clear_reports_found
+
+- name: ClearReports | remove stale artifacts
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _clear_reports_found.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"

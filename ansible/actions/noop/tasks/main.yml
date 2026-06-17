@@ -1,6 +1,7 @@
 ---
-# Built-in no-op: use for dry wiring or when you only need discovery/scan.
+# Action: noop (read-only)
+# Does nothing — use for wiring tests or scan-only runs.
 
-- name: No-op | mark no file changes
+- name: No-op | set changed_files
   ansible.builtin.set_fact:
     changed_files: []

@@ -1,13 +1,10 @@
 ---
-# Action: line-append
-# Idempotently ensures a single line exists in every matched file. Running it
-# twice changes nothing the second time — only files actually edited are
-# reported in changed_files (so only those repos get published).
+# Action: line-append (write)
+# Idempotently ensures a line exists in every matched file.
 #
-# Required params:
-#   reporker_action.params.ensure_line   — the line to insert
-# Optional params:
-#   reporker_action.params.insertafter   — lineinfile insertafter (default: EOF)
+# Params:
+#   ensure_line  (required) — line to insert
+#   insertafter  (optional) — lineinfile insertafter (default: EOF)
 
 - name: Line-append | require params.ensure_line
   ansible.builtin.assert:
@@ -15,7 +12,7 @@
       - reporker_action.params is defined
       - reporker_action.params.ensure_line is defined
       - reporker_action.params.ensure_line | length > 0
-    fail_msg: "Set reporker_action.params.ensure_line in your config for the line-append action."
+    fail_msg: "Set reporker_action.params.ensure_line for the line-append action."
 
 - name: Line-append | ensure line in each target
   ansible.builtin.lineinfile:
@@ -43,3 +40,15 @@
         | list
       }}
   when: all_targets | length > 0
+
+- name: Line-append | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      summary:
+        files_scanned: "{{ all_targets | length }}"
+        files_changed: "{{ changed_files | length }}"
+      ensure_line: "{{ reporker_action.params.ensure_line }}"
+      changed_files: "{{ changed_files }}"
+
+- name: Line-append | write 03-action.json
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"

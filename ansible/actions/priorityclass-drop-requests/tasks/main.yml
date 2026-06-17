@@ -13,8 +13,8 @@
 #       priority_classes: [medium, low]
 #
 # Output:
-#   02-priorityclass-breakdown.json
-#   03-priorityclass-drop-requests.json
+#   02-breakdown.json
+#   03-action.json
 
 - name: PriorityClassDropRequests | resolve script paths
   ansible.builtin.set_fact:

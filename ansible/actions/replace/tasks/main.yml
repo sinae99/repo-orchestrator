@@ -8,7 +8,7 @@
 #   reporker_action.params.regexp   — extended regex to match (ansible.builtin.replace)
 #   reporker_action.params.replace  — replacement string (may use \1, \2 backrefs)
 #
-# Output: ansible/reports/replace.json
+# Output: 03-action.json
 
 - name: Replace | require params
   ansible.builtin.assert:
@@ -46,7 +46,7 @@
       }}
   when: all_targets | length > 0
 
-- name: Replace | write replace.json
+- name: Replace | write 03-action.json
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.action }}"

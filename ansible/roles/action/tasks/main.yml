@@ -1,22 +1,24 @@
 ---
-# Phase 4: Run a pluggable action from ansible/actions/<reporker_action.name>/
+# Phase 4: Run the configured action (ansible/actions/<name>/tasks/main.yml).
 
-- name: Action | check scan report exists
+- name: Action | load scan report
   ansible.builtin.stat:
     path: "{{ paths.reports }}/{{ reporker_report.scan }}"
   register: scan_report_stat
 
 - name: Action | fail if scan report missing
   ansible.builtin.fail:
-    msg: "Scan report not found at {{ paths.reports }}/{{ reporker_report.scan }}. Run ./reporker scan or ./reporker action first."
+    msg: >-
+      Scan report not found at {{ paths.reports }}/{{ reporker_report.scan }}.
+      Run ./reporker scan or ./reporker action first.
   when: not scan_report_stat.stat.exists
 
-- name: Action | load scan report
+- name: Action | read scan report
   ansible.builtin.include_vars:
     file: "{{ paths.reports }}/{{ reporker_report.scan }}"
     name: scan_report
 
-- name: Action | set targets_by_repo and repos_with_targets from scan report
+- name: Action | hydrate targets from scan report
   ansible.builtin.set_fact:
     targets_by_repo: "{{ scan_report.targets_by_repo | default({}) }}"
     repos_with_targets: >-
@@ -37,10 +39,6 @@
 - name: Action | build flat target list
   ansible.builtin.set_fact:
     all_targets: "{{ targets_by_repo.values() | list | flatten }}"
-
-- name: Action | debug target count
-  ansible.builtin.debug:
-    msg: "Running '{{ reporker_action.name | default('noop') }}' on {{ all_targets | length }} target file(s)."
 
 - name: Action | resolve tasks file
   ansible.builtin.set_fact:
@@ -65,16 +63,17 @@
   when: not action_tasks_stat.stat.exists
 
 - name: Action | run pluggable action
+  ansible.builtin.debug:
+    msg: "Running '{{ reporker_action.name | default('noop') }}' on {{ all_targets | length }} target file(s)."
+
+- name: Action | include action tasks
   ansible.builtin.include_tasks: "{{ action_tasks_file }}"
 
 - name: Action | normalize changed_files
   ansible.builtin.set_fact:
     changed_files: "{{ changed_files | default([]) }}"
 
-# Attribute every changed file to the repo it lives under. This works whether
-# the file was one of the scanned targets (line-append, replace) or a brand new
-# file the action created (ensure-file), so all changes get published.
-- name: Action | attribute changed files to their repos
+- name: Action | attribute changed files to repos
   ansible.builtin.set_fact:
     changed_targets_by_repo: >-
       {{
@@ -88,7 +87,7 @@
     loop_var: repo
   when: changed_files | length > 0
 
-- name: Action | empty change map when nothing changed
+- name: Action | clear change map when nothing changed
   ansible.builtin.set_fact:
     changed_targets_by_repo: {}
   when: changed_files | length == 0
@@ -98,22 +97,22 @@
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
     changed_repos: "{{ changed_targets_by_repo | dict2items | rejectattr('value', 'equalto', []) | map(attribute='key') | list }}"
 
-- name: Action | write action metadata report
+- name: Action | write engine metadata report
   check_mode: false
   ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action_meta }}"
+    dest: "{{ paths.reports }}/{{ reporker_report.meta }}"
     mode: "0644"
     content: |
       {{
         {
           "action": {
-            "name":            reporker_action.name | default('noop'),
-            "tasks_file":      action_tasks_file,
+            "name": reporker_action.name | default('noop'),
+            "tasks_file": action_tasks_file,
             "target_patterns": reporker_action.target_patterns | default([]),
-            "params":          reporker_action.params | default({})
+            "params": reporker_action.params | default({})
           },
           "summary": {
-            "total_targets":       all_targets | length,
+            "total_targets": all_targets | length,
             "changed_files_count": changed_files | length,
             "changed_repos_count": changed_repos | length
           },

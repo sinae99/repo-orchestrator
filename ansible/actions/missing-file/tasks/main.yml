@@ -6,8 +6,7 @@
 #
 # Just set target_patterns to the file you expect everywhere; no params needed.
 #
-# Output: ansible/reports/missing-file.json
-# This action is read-only: changed_files is always [].
+# Output: 03-action.json (read-only — changed_files is always [])
 
 - name: Missing-file | split repos by presence of a match
   ansible.builtin.set_fact:
@@ -24,7 +23,7 @@
         | map(attribute='key') | list
       }}
 
-- name: Missing-file | write missing-file.json
+- name: Missing-file | write 03-action.json
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.action }}"

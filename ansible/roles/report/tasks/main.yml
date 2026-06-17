@@ -1,5 +1,5 @@
 ---
-# Phase 5: Reporting
+# Phase 5: Write human summary and machine-readable run record.
 
 - name: Report | ensure reports directory exists
   ansible.builtin.file:
@@ -44,11 +44,11 @@
 
 - name: Report | set safe defaults for optional facts
   ansible.builtin.set_fact:
-    repos_with_targets:      "{{ repos_with_targets      | default([]) }}"
-    repos_without_targets:   "{{ repos_without_targets   | default([]) }}"
-    changed_repos:           "{{ changed_repos           | default([]) }}"
+    repos_with_targets: "{{ repos_with_targets | default([]) }}"
+    repos_without_targets: "{{ repos_without_targets | default([]) }}"
+    changed_repos: "{{ changed_repos | default([]) }}"
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
-    changed_files:           "{{ changed_files           | default([]) }}"
+    changed_files: "{{ changed_files | default([]) }}"
     all_targets: >-
       {{
         all_targets | default(
@@ -59,11 +59,12 @@
 - name: Report | derive report metadata
   ansible.builtin.set_fact:
     _report_action_name: "{{ reporker_action.name | default('noop') }}"
-    _report_write_actions:
-      - line-append
-      - replace
-      - ensure-file
-      - priorityclass-drop-requests
+    _report_action_mode: >-
+      {{
+        'write'
+        if _report_action_name in reporker_write_actions
+        else 'read'
+      }}
     _report_files_matched: "{{ all_targets | length }}"
     _report_files_changed: "{{ changed_files | length }}"
     _report_generated_at: "{{ lookup('pipe', 'date -Iseconds') }}"
@@ -71,26 +72,17 @@
     _report_content_grep: "{{ reporker_action.content_grep | default('') }}"
     _report_target_patterns: "{{ reporker_action.target_patterns | default([]) }}"
 
-- name: Report | resolve action mode and report file
-  ansible.builtin.set_fact:
-    _report_action_mode: >-
-      {{
-        'write'
-        if _report_action_name in _report_write_actions
-        else 'read'
-      }}
-    _report_action_file: "{{ reporker_report.action }}"
-
-- name: Report | check whether action report exists
+- name: Report | check optional report files
   ansible.builtin.stat:
-    path: "{{ paths.reports }}/{{ _report_action_file }}"
-  register: _report_action_stat
-
-- name: Report | check whether breakdown report exists
-  ansible.builtin.stat:
-    path: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
-  register: _report_breakdown_stat
-  when: reporker_is_priority_action | bool
+    path: "{{ paths.reports }}/{{ item.key }}"
+  register: _report_file_stats
+  loop:
+    - key: "{{ reporker_report.action }}"
+      label: "Action results — {{ _report_action_name }}"
+    - key: "{{ reporker_report.breakdown }}"
+      label: "Pod priority breakdown (critical / high / medium / low)"
+  loop_control:
+    label: "{{ item.key }}"
 
 - name: Report | load breakdown summary when present
   ansible.builtin.slurp:
@@ -98,16 +90,16 @@
   register: _report_breakdown_slurp
   when:
     - reporker_is_priority_action | bool
-    - _report_breakdown_stat.stat.exists | default(false)
+    - (_report_file_stats.results[1].stat.exists | default(false))
 
 - name: Report | set breakdown summary fact
   ansible.builtin.set_fact:
     priority_breakdown_summary: "{{ (_report_breakdown_slurp.content | b64decode | from_json).summary }}"
   when:
     - reporker_is_priority_action | bool
-    - _report_breakdown_stat.stat.exists | default(false)
+    - (_report_file_stats.results[1].stat.exists | default(false))
 
-- name: Report | write run report (full machine-readable summary)
+- name: Report | write run report
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.run }}"
@@ -116,40 +108,41 @@
       {{
         {
           "generated_at": _report_generated_at,
+          "report_files": reporker_report,
           "gitlab": {
-            "host":        gitlab.host,
-            "group_id":    gitlab.group_id,
+            "host": gitlab.host,
+            "group_id": gitlab.group_id,
             "repo_filter": gitlab.repo_filter | default([])
           },
           "paths": {
             "workspace": paths.workspace,
-            "reports":   paths.reports
+            "reports": paths.reports
           },
           "git": {
-            "branch_name":    git.branch_name,
+            "branch_name": git.branch_name,
             "commit_message": git.commit_message
           },
           "action": {
-            "name":            _report_action_name,
-            "mode":            _report_action_mode,
+            "name": _report_action_name,
+            "mode": _report_action_mode,
             "target_patterns": _report_target_patterns,
-            "content_grep":    _report_content_grep,
-            "params":          reporker_action.params | default({})
+            "content_grep": _report_content_grep,
+            "params": reporker_action.params | default({})
           },
           "summary": {
-            "repos_total":           repos | length,
-            "repos_with_targets":    repos_with_targets | length,
+            "repos_total": repos | length,
+            "repos_with_targets": repos_with_targets | length,
             "repos_without_targets": repos_without_targets | length,
-            "files_matched":         _report_files_matched,
-            "files_changed":         _report_files_changed,
-            "repos_changed":         changed_repos | length
+            "files_matched": _report_files_matched,
+            "files_changed": _report_files_changed,
+            "repos_changed": changed_repos | length
           },
-          "targets_by_repo":         targets_by_repo,
+          "targets_by_repo": targets_by_repo,
           "changed_targets_by_repo": changed_targets_by_repo
         } | to_nice_json
       }}
 
-- name: Report | write changed report (changed repos only)
+- name: Report | write changed report
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.changed }}"
@@ -158,10 +151,10 @@
       {{
         {
           "git": {
-            "branch_name":    git.branch_name,
+            "branch_name": git.branch_name,
             "commit_message": git.commit_message
           },
-          "repos_changed":           changed_repos,
+          "repos_changed": changed_repos,
           "changed_targets_by_repo": changed_targets_by_repo
         } | to_nice_json
       }}
@@ -183,26 +176,26 @@
             'file': reporker_report.breakdown,
             'label': 'Pod priority breakdown (critical / high / medium / low)'
           }]
-          if reporker_is_priority_action | bool
+          if (_report_file_stats.results[1].stat.exists | default(false))
           else []
         )
         + (
           [{
-            'num': '03' if reporker_is_priority_action | bool else '02',
-            'file': _report_action_file,
+            'num': '03',
+            'file': reporker_report.action,
             'label': 'Action results — ' ~ _report_action_name
           }]
-          if _report_action_stat.stat.exists | default(false)
+          if (_report_file_stats.results[0].stat.exists | default(false))
           else []
         )
         + [{
-          'num': reporker_report.scan.split('-')[0],
+          'num': '04',
           'file': reporker_report.scan,
           'label': 'Scan matches per repo'
         }]
         + (
           [{
-            'num': reporker_report.changed.split('-')[0],
+            'num': '05',
             'file': reporker_report.changed,
             'label': 'Changed files (input for reporker publish)'
           }]
@@ -210,7 +203,7 @@
           else []
         )
         + [{
-          'num': reporker_report.run.split('-')[0],
+          'num': '06',
           'file': reporker_report.run,
           'label': 'Full run record (JSON)'
         }]
@@ -266,7 +259,7 @@
         + (', dry-run' if _report_dry_run else '')
       }}
 
-- name: Report | write summary.txt (human-readable entry point)
+- name: Report | write summary.txt
   check_mode: false
   ansible.builtin.template:
     src: summary.txt.j2

@@ -1,21 +1,42 @@
 ---
-# Phase 6: Publish changes (branch -> commit -> push)
-# Only runs for repositories that changed in Phase 4.
+# Phase 6: Branch, commit, and push changed repos.
+
+- name: Publish | resolve changed report path
+  ansible.builtin.set_fact:
+    _publish_changed_report: "{{ reporker_report.changed }}"
+
+- name: Publish | load run report when running standalone
+  ansible.builtin.stat:
+    path: "{{ paths.reports }}/{{ reporker_report.run }}"
+  register: _run_report_stat
+
+- name: Publish | read changed path from run report
+  ansible.builtin.include_vars:
+    file: "{{ paths.reports }}/{{ reporker_report.run }}"
+    name: _run_report
+  when: _run_report_stat.stat.exists
+
+- name: Publish | use changed path recorded in run report
+  ansible.builtin.set_fact:
+    _publish_changed_report: "{{ _run_report.report_files.changed }}"
+  when:
+    - _run_report_stat.stat.exists
+    - _run_report.report_files.changed is defined
 
 - name: Publish | check for changed report
   ansible.builtin.stat:
-    path: "{{ paths.reports }}/{{ reporker_report.changed }}"
+    path: "{{ paths.reports }}/{{ _publish_changed_report }}"
   register: _changed_json_stat
 
 - name: Publish | load changed report when running standalone
   ansible.builtin.include_vars:
-    file: "{{ paths.reports }}/{{ reporker_report.changed }}"
+    file: "{{ paths.reports }}/{{ _publish_changed_report }}"
     name: _changed_report
   when:
     - changed_repos is not defined
     - _changed_json_stat.stat.exists
 
-- name: Publish | hydrate facts from changed.json
+- name: Publish | hydrate facts from changed report
   ansible.builtin.set_fact:
     changed_repos: "{{ _changed_report.repos_changed | default([]) }}"
     changed_targets_by_repo: "{{ _changed_report.changed_targets_by_repo | default({}) }}"
@@ -49,19 +70,17 @@
   changed_when: false
   when: changed_repos | length == 0
 
-- name: Publish | set changed_repos from dirty repos (git status)
+- name: Publish | set changed_repos from dirty repos
   ansible.builtin.set_fact:
     changed_repos: "{{ dirty_check.results | default([]) | map(attribute='stdout') | map('trim') | reject('equalto','') | list }}"
   when: changed_repos | length == 0
-
 
 - name: Publish | skip if nothing changed
   ansible.builtin.debug:
     msg: "No changed repositories. Publish phase will be skipped."
   when: changed_repos | length == 0
 
-# Write per-repo file lists so we can stage only those files without complex inline code
-- name: Publish | write changed file list per repo (for staging)
+- name: Publish | write changed file list per repo
   ansible.builtin.copy:
     dest: "{{ item }}/.repo_orch_changed_files"
     mode: "0644"
@@ -81,7 +100,6 @@
 
     echo "==> REPO: $repo_dir"
 
-    # Determine default branch from origin
     default_branch="$(git -C "$repo_dir" remote show origin | sed -n '/HEAD branch/s/.*: //p')"
     if [ -z "$default_branch" ]; then
       echo "ERROR: Could not determine default branch for $repo_dir"
@@ -89,11 +107,8 @@
     fi
     echo "Default branch: $default_branch"
 
-    # Sync default branch
     git -C "$repo_dir" checkout "$default_branch"
     git -C "$repo_dir" pull --ff-only
-
-    # Create/reset branch from default
     git -C "$repo_dir" checkout -B "$branch"
 
     changefile_list="$repo_dir/.repo_orch_changed_files"
@@ -106,7 +121,6 @@
       git -C "$repo_dir" add -A
     fi
 
-    # Commit & push only if there are changes
     if git -C "$repo_dir" status --porcelain | grep -q .; then
       git -C "$repo_dir" commit -m "{{ git.commit_message }}"
       git -C "$repo_dir" push -u origin "$branch"
@@ -135,5 +149,5 @@
 
 - name: Publish | debug publish completion
   ansible.builtin.debug:
-    msg: "Publish phase finished. See {{ paths.reports }}/{{ reporker_report.publish }} and {{ paths.reports }}/{{ reporker_report.summary }}"
+    msg: "Publish finished. See {{ paths.reports }}/{{ reporker_report.publish }} and {{ paths.reports }}/{{ reporker_report.summary }}"
   when: changed_repos | length > 0

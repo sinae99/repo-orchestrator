@@ -70,7 +70,7 @@
         | list
       }}
 
-- name: Ensure-file | write ensure-file.json
+- name: Ensure-file | write 03-action.json
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.action }}"

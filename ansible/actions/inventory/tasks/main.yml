@@ -1,9 +1,6 @@
 ---
-# Action: inventory
-# Read-only audit — lists every file matched by the scan phase.
-# Use for "find all Dockerfiles", "list every requirements.txt", etc.
-#
-# Output: ansible/reports/inventory.json
+# Action: inventory (read-only)
+# Lists every file matched by the scan phase.
 
 - name: Inventory | build per-repo counts
   ansible.builtin.set_fact:
@@ -38,7 +35,7 @@
         | list
       }}
 
-- name: Inventory | write inventory.json
+- name: Inventory | write 03-action.json
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.action }}"

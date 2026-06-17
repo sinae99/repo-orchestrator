@@ -1,5 +1,5 @@
 ---
-# Shared: write numbered priority-class breakdown report (02-...).
+# Shared: write 02-breakdown.json for priority-class actions.
 # Requires all_targets and reporker_report.breakdown.
 
 - name: PriorityBreakdown | resolve classifier script

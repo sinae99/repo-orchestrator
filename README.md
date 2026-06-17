@@ -218,13 +218,13 @@ Then `./reporker action && ./reporker publish` (or add `--dry-run` to preview fi
 
 Do u need a new action?
 
-Copy the template and point `reporker_action.name` at it:
+Clone reporker, then tell your AI agent to read [`ansible/actions/README.md`](ansible/actions/README.md) and build one for you. It has a full contract, template, and checklist for agents.
 
 ```bash
 cp -r ansible/actions/_template ansible/actions/my-action
 ```
 
-An action gets the matched files handed to it and only has to set `changed_files` at the end. Full guide: [`ansible/actions/README.md`](ansible/actions/README.md).
+An action gets matched files handed to it and must set `changed_files` at the end. Full guide: [`ansible/actions/README.md`](ansible/actions/README.md).
 
 ---
 
@@ -241,18 +241,16 @@ Run `./reporker check` and it will tell you what's missing.
 
 ## Reports
 
-After `reporker action`, open **`ansible/reports/01-summary.txt`** first. Reports are numbered in reading order — no index file.
-
-**Priority-class runs** (example):
+After `reporker action`, open **`ansible/reports/01-summary.txt`** first. Report filenames are fixed for every action — read them in order.
 
 | # | File | What |
 |---|---|---|
 | 01 | `01-summary.txt` | Human summary — start here |
-| 02 | `02-priorityclass-breakdown.json` | How pods split across critical / high / medium / low |
-| 03 | `03-<action>.json` | Action-specific results |
-| 04 | `04-scan.json` | Raw scan matches per repo |
-| 05 | `05-changed.json` | Changed files (when a write action modified files) |
-| 06 | `06-report.json` | Full machine-readable run record |
+| 02 | `02-breakdown.json` | Pod priority split (priority-class actions only) |
+| 03 | `03-action.json` | Action-specific results |
+| 04 | `04-scan.json` | Scan matches per repo |
+| 05 | `05-changed.json` | Changed files (write actions) |
+| 06 | `06-run.json` | Full machine-readable run record |
 
 Rule: manifests without `priorityClassName` count as **medium**.
 
