@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# reporker — bulk GitLab repo operations
+# reporker — scan and change files across a GitLab group
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +15,7 @@ EXTRA_ARGS=()
 
 usage() {
   cat <<'EOF'
-reporker — bulk scan and modify files across a GitLab group
+reporker — scan and change files across every repo in a GitLab group
 
 Usage:
   reporker init              Create local config from the example

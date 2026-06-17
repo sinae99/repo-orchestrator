@@ -1,40 +1,37 @@
 # reporker
 
-**Bulk scan and modify files across every repo in a GitLab group.**
+I built this because I kept hitting the same wall: **something needs to happen across a whole GitLab group**, and doing it repo by repo is not realistic.
 
-Microservice teams often split code across dozens or hundreds of repositories—one service per repo, shared GitLab groups, independent deploy pipelines. That scale makes group-wide tasks painful: auditing manifests, rolling out a config standard, or answering “which services still use X?” by hand does not scale.
+We run microservices — one repo per service, sometimes 50–80 repos under one group. When I need to find every manifest still on `image: latest`, or drop resource requests from low-priority pods before a scheduling change, or check which services have no `.gitlab-ci.yml`… clicking through GitLab one repo at a time doesn't work.
 
-**reporker** automates that. Point it at a GitLab group, define which files matter, pick an action. It discovers repos, clones them, scans, runs your logic, and writes structured reports. Write actions can branch and push changes for you.
+So I made *reporker*. Point it at a group, tell it which files to look at, pick an action. It clones everything, scans, runs your logic, writes JSON reports. If the action changes files, it can branch and push for you.
 
 ```
-GitLab group → discover → clone → scan → action → report → (optional) publish
+GitLab group → clone → scan → action → report → (optional) publish
 ```
 
-Works with gitlab.com or self-hosted GitLab. One config file, one CLI.
+Works on gitlab.com or self-hosted. One config file, one CLI.
 
 ---
 
-## Use cases
+## What I've used it for
 
-| Scenario | Example |
-|---|---|
-| **Fleet inventory** | List every `Dockerfile`, `docker-compose.yml`, or Helm chart in a group |
-| **Cross-repo search** | Find K8s manifests with `image: latest`, missing limits, or deprecated API versions |
-| **Policy rollout** | Add a line to every `requirements.txt`, bump a base image, drop in `CODEOWNERS` |
-| **Compliance sweeps** | Search for sensitive patterns across all services before an audit |
-| **Scheduling prep** | Classify pods by `priorityClassName` and adjust resource requests group-wide |
+- **Inventory** — list every `Dockerfile`, `docker-compose.yml`, or any file pattern in a group
+- **Grep at scale** — find K8s manifests with a specific `priorityClassName`, missing limits, old API versions
+- **Text changes** — add a line to every `requirements.txt`, bump a base image, drop in `CODEOWNERS`
+- **Compliance sweeps** — search for patterns (`password:`, `image: latest`) before an audit
 
-Read-only actions produce reports. Write actions can open a branch per changed repo.
+Read-only actions give you a report and stop. Write actions can open a branch per changed repo.
 
 ---
 
-## Quick start
+## Get going
 
 ```bash
 git clone https://github.com/sinae99/repo-orchestrator.git && cd repo-orchestrator
 
 ./reporker init
-# Edit ansible/group_vars/all.yml — set gitlab.host, gitlab.group_id, and reporker_action
+# edit ansible/group_vars/all.yml — host, group_id, action
 
 printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
 
@@ -43,132 +40,117 @@ printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
 ./reporker action
 ```
 
-Open **`ansible/reports/01-summary.txt`** first—it tells you what ran and which report to read next.
+The token file is the only auth step — reporker hands it to `glab` for you. Clone and push use SSH.
 
-To apply changes across repos:
+Reports go to `ansible/reports/`. Open **`ansible/reports/01-summary.txt`** first.
+
+To push changes:
 
 ```bash
-./reporker action --dry-run    # preview without writing files
-./reporker publish             # branch, commit, push changed repos
+./reporker action --dry-run    # see the diff, don't touch files
+./reporker publish
 ```
 
-Token setup is the only auth step. reporker passes `glab/token` to the GitLab CLI for API discovery; clone and push use SSH.
+You need Ansible (≥ 2.14), [glab](https://gitlab.com/gitlab-org/cli), git, and jq. Run `./reporker check` — it'll tell you what's missing.
 
 ---
 
 ## Commands
 
-| Command | Description |
+| Command | Does |
 |---|---|
 | `./reporker init` | Create local config from the example |
 | `./reporker check` | Verify tools, config, and token |
-| `./reporker clone` | Discover repos and clone/update |
+| `./reporker clone` | Discover repos + clone/update |
 | `./reporker scan` | Find target files only |
 | `./reporker action` | Scan, run action, write reports |
 | `./reporker publish` | Branch, commit, push changed repos |
-| `./reporker run` | `clone` → `action` (no push) |
+| `./reporker run` | clone → action, no push |
 | `./reporker all` | Full pipeline including publish |
 
-**Flags**
+- `--dry-run` — preview a write action without touching files; reports still get written
+- `-- <args>` — pass straight to ansible-playbook, e.g. `./reporker action -- -e reporker_action.name=grep`
 
-- `--dry-run` — preview write actions (`ansible --check --diff`); reports are still written
-- `-- <args>` — pass through to `ansible-playbook`, e.g. `./reporker action -- -e reporker_action.name=grep`
-
-Run `./reporker --help` for details.
+`./reporker --help` for the rest.
 
 ---
 
-## Configuration
+## Config
 
-After `./reporker init`, edit `ansible/group_vars/all.yml` (gitignored):
+`ansible/group_vars/all.yml` — created by `init`, gitignored:
 
 ```yaml
 gitlab:
   host: gitlab.com
-  group_id: 12345          # your GitLab group ID
-  repo_filter: []          # empty = all repos; or ["api", "worker"]
+  group_id: 12345          # your group ID
+  repo_filter: []          # empty = whole group; or ["api", "worker"]
 
 reporker_action:
   name: inventory
   target_patterns:
     - "Dockerfile"
     - "Dockerfile.*"
-  content_grep: ""         # optional — filter by file content
+  content_grep: ""         # optional — only files containing this string
   params: {}
 ```
 
-| Key | Purpose |
-|---|---|
-| `target_patterns` | File globs, searched recursively in each repo |
-| `content_grep` | Optional regex — only files containing this string |
-| `name` | Built-in action under `ansible/actions/<name>/` |
-| `params` | Action-specific options |
+- `target_patterns` — file globs, searched recursively in each repo
+- `content_grep` — narrows results further (e.g. `priorityClassName`)
+- `name` — action to run, lives in `ansible/actions/<name>/`
+- `params` — whatever your action needs
 
-**Ready-to-use configs** for every built-in action: [`ansible/group_vars/all.yml.example`](ansible/group_vars/all.yml.example) and the [Actions guide](ansible/actions/README.md).
+Copy-paste configs for every built-in action: [`ansible/group_vars/all.yml.example`](ansible/group_vars/all.yml.example) and [`ansible/actions/README.md`](ansible/actions/README.md).
 
 ---
 
 ## Built-in actions
 
-| Action | Mode | Description |
+| Action | | What |
 |---|---|---|
 | [`inventory`](ansible/actions/inventory/) | read | Matched files per repo |
 | [`grep`](ansible/actions/grep/) | read | Matching lines with line numbers |
-| [`missing-file`](ansible/actions/missing-file/) | read | Repos missing a required file |
-| [`priorityclass`](ansible/actions/priorityclass/) | read | Classify manifests by priority tier |
+| [`missing-file`](ansible/actions/missing-file/) | read | Repos that do NOT have a target file |
+| [`priorityclass`](ansible/actions/priorityclass/) | read | Classify manifests by priority (missing → medium) |
 | [`priorityclass-drop-requests`](ansible/actions/priorityclass-drop-requests/) | write | Drop requests from medium/low pods |
-| [`line-append`](ansible/actions/line-append/) | write | Idempotently add a line |
+| [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
 | [`replace`](ansible/actions/replace/) | write | Regex find-and-replace |
-| [`ensure-file`](ansible/actions/ensure-file/) | write | Create a standard file if missing |
-| [`noop`](ansible/actions/noop/) | read | No-op — useful for wiring tests |
+| [`ensure-file`](ansible/actions/ensure-file/) | write | Creates a standard file in every repo |
+| [`noop`](ansible/actions/noop/) | read | Does nothing — useful for wiring |
 
-Copy-paste recipes and workflow details: **[ansible/actions/README.md](ansible/actions/README.md)**
-
-Custom actions: copy [`ansible/actions/_template`](ansible/actions/_template/) and follow the contract in the actions guide.
-
----
-
-## Requirements
-
-- Ansible ≥ 2.14
-- [glab](https://gitlab.com/gitlab-org/cli) — GitLab CLI
-- git, jq
-- SSH key configured for your GitLab instance (clone/push); token needs `api` scope (discovery)
-
-Run `./reporker check` to see what is missing.
+Need a new action? Copy [`ansible/actions/_template`](ansible/actions/_template/) — full guide in [`ansible/actions/README.md`](ansible/actions/README.md).
 
 ---
 
 ## Reports
 
-Output directory: `ansible/reports/` — start with **`01-summary.txt`**.
+After `reporker action`, open **`ansible/reports/01-summary.txt`**. Filenames are fixed for every action — read them in order.
 
-| # | File | Contents |
+| # | File | What |
 |---|---|---|
-| 01 | `01-summary.txt` | Human-readable summary |
-| 02 | `02-breakdown.json` | Priority breakdown (priority-class actions) |
+| 01 | `01-summary.txt` | Start here |
+| 02 | `02-breakdown.json` | Pod priority split (priority-class actions only) |
 | 03 | `03-action.json` | Action-specific results |
 | 04 | `04-scan.json` | Scan matches per repo |
 | 05 | `05-changed.json` | Changed files (write actions) |
-| 06 | `06-run.json` | Full machine-readable record |
+| 06 | `06-run.json` | Full machine-readable run record |
 
-Details: [`ansible/reports/README.md`](ansible/reports/README.md)
+Manifests without `priorityClassName` count as **medium** in priority-class actions.
+
+More detail: [`ansible/reports/README.md`](ansible/reports/README.md)
 
 ---
 
-## Troubleshooting
+## When something breaks
 
-| Issue | Fix |
-|---|---|
-| `config not found` | Run `./reporker init` |
-| `group_id is still the example value` | Set your numeric group ID in `ansible/group_vars/all.yml` |
-| `Token file not found` | `printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token` |
-| Clone or push fails | Clone/push use SSH — verify with `ssh -T git@<your-host>` |
-| Stale repo list | Delete `ansible/reports/repos.json` to refresh from the API |
-| Preview before writing | `./reporker action --dry-run` |
+- **`config not found`** — run `./reporker init`
+- **`group_id is still the example value`** — edit `ansible/group_vars/all.yml`
+- **`Token file not found`** — `printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token` (needs `api` scope)
+- **Clone or push fails** — uses SSH; check `ssh -T git@<your-host>`
+- **Stale repo list** — delete `ansible/reports/repos.json` to re-fetch from GitLab
+- **Preview before writing** — `./reporker action --dry-run`
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — [LICENSE](LICENSE)

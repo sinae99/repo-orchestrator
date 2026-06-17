@@ -1,13 +1,13 @@
 # glab/
 
-Runtime files for GitLab API discovery. See the [main README](../README.md) for setup.
+Stuff reporker needs to talk to GitLab. See the [main README](../README.md).
 
-| File | Purpose |
+| File | What |
 |---|---|
-| `token` | Personal access token (`api` scope) — **never commit** |
-| `repos.txt` | Generated clone URLs — recreated on every `./reporker clone` |
+| `token` | Your personal access token (`api` scope) — don't commit this |
+| `repos.txt` | Clone URLs — regenerated every `./reporker clone` |
 
-Create the token file once:
+One-time setup:
 
 ```bash
 printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
