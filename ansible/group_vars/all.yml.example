@@ -79,6 +79,21 @@ reporker_action:
 #       - medium
 #       - low
 
+# priorityclass-drop-requests (write) — drop requests, keep limits for medium/low:
+# reporker_action:
+#   name: priorityclass-drop-requests
+#   target_patterns:
+#     - "*.yaml"
+#     - "*.yml"
+#   content_grep: priorityClassName
+#   params:
+#     priority_classes:
+#       - medium
+#       - low
+# git:
+#   branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
+#   commit_message: "chore: remove resource requests from medium/low priority pods"
+
 # line-append (write) — ensure a line exists in every requirements.txt:
 # reporker_action:
 #   name: line-append

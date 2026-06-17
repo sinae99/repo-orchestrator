@@ -1,0 +1,158 @@
+---
+# Action: priorityclass-drop-requests
+# Write action. For Kubernetes manifests whose pod template uses a configured
+# priorityClassName (default: medium, low), remove container resource requests
+# and keep limits.
+# Honors --dry-run (reporker action --dry-run) via Ansible check mode.
+#
+# Configure in group_vars:
+#   reporker_action:
+#     name: priorityclass-drop-requests
+#     target_patterns: ["*.yaml", "*.yml"]
+#     content_grep: priorityClassName
+#     params:
+#       priority_classes: [medium, low]
+#
+# Then:
+#   reporker action --dry-run
+#   reporker action && reporker publish
+#
+# Output: ansible/reports/priorityclass-drop-requests.json
+
+- name: PriorityClassDropRequests | resolve script path
+  ansible.builtin.set_fact:
+    _pcdr_script: "{{ playbook_dir }}/../actions/priorityclass-drop-requests/files/drop_requests.py"
+
+- name: PriorityClassDropRequests | resolve target priority classes
+  ansible.builtin.set_fact:
+    _pc_classes: "{{ reporker_action.params.priority_classes | default(['medium', 'low']) }}"
+
+- name: PriorityClassDropRequests | require PyYAML
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - import yaml
+  changed_when: false
+
+- name: PriorityClassDropRequests | debug scan start
+  ansible.builtin.debug:
+    msg: >-
+      Processing {{ all_targets | length }} manifest(s);
+      dropping requests for priorityClassName: {{ _pc_classes | join(', ') }}
+
+- name: PriorityClassDropRequests | grep each manifest for matching priority classes
+  ansible.builtin.shell: |
+    set -euo pipefail
+    matched=""
+    {% for cls in _pc_classes %}
+    if grep -qE "^[[:space:]]*priorityClassName:[[:space:]]*[\"']?{{ cls }}[\"']?[[:space:]]*(#.*)?$" "{{ item }}" 2>/dev/null; then
+      matched="${matched}{{ cls }},"
+    fi
+    {% endfor %}
+    echo "${matched%,}"
+  args:
+    executable: /bin/bash
+  loop: "{{ all_targets }}"
+  register: _pc_grep
+  changed_when: false
+
+- name: PriorityClassDropRequests | build manifest list with matching priority classes
+  ansible.builtin.set_fact:
+    _pc_targets: >-
+      {{
+        _pc_grep.results
+        | selectattr('stdout', 'defined')
+        | rejectattr('stdout', 'equalto', '')
+        | map(attribute='item')
+        | list
+      }}
+
+- name: PriorityClassDropRequests | set changed_files (none)
+  ansible.builtin.set_fact:
+    changed_files: []
+  when: _pc_targets | length == 0
+
+- name: PriorityClassDropRequests | drop resource requests in each matching manifest
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          'python3',
+          _pcdr_script,
+          item,
+          '--priority-classes',
+          _pc_classes | join(','),
+        ]
+        + (['--check'] if ansible_check_mode else [])
+      }}
+  loop: "{{ _pc_targets }}"
+  register: _pcdr_results
+  changed_when: false
+  failed_when: false
+  when: _pc_targets | length > 0
+
+- name: PriorityClassDropRequests | fail on script errors
+  ansible.builtin.fail:
+    msg: >-
+      drop_requests.py failed on {{ item.item }}
+      (rc={{ item.rc }}): {{ item.stderr | default('') | trim }}
+  loop: "{{ _pcdr_results.results }}"
+  when:
+    - _pc_targets | length > 0
+    - item.rc | int not in [0, 3]
+
+- name: PriorityClassDropRequests | set changed_files from results
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        _pcdr_results.results
+        | selectattr('rc', 'defined')
+        | selectattr('rc', 'equalto', 3)
+        | map(attribute='item')
+        | list
+      }}
+  when: _pc_targets | length > 0
+
+- name: PriorityClassDropRequests | collect files per priority class
+  ansible.builtin.set_fact:
+    _pc_findings: >-
+      {{
+        _pc_findings | default({}) | combine({
+          item: _pc_grep.results
+            | selectattr('stdout', 'defined')
+            | selectattr('stdout', 'search', item)
+            | map(attribute='item')
+            | list
+        })
+      }}
+  loop: "{{ _pc_classes }}"
+
+- name: PriorityClassDropRequests | write priorityclass-drop-requests.json report
+  check_mode: false
+  ansible.builtin.copy:
+    dest: "{{ paths.reports }}/priorityclass-drop-requests.json"
+    mode: "0644"
+    content: |
+      {{
+        {
+          "action": "priorityclass-drop-requests",
+          "priority_classes": _pc_classes,
+          "check_mode": ansible_check_mode,
+          "summary": {
+            "total_manifests_scanned": all_targets | length,
+            "manifests_with_matching_priority_class": _pc_targets | default([]) | length,
+            "manifests_changed": changed_files | length
+          },
+          "findings": _pc_findings | default({}),
+          "changed_files": changed_files
+        } | to_nice_json
+      }}
+
+- name: PriorityClassDropRequests | print summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ changed_files | length }} of {{ _pc_targets | default([]) | length }} matching manifest(s)
+      {{ 'would change' if ansible_check_mode else 'changed' }}
+      (scanned {{ all_targets | length }} total)
+      → {{ paths.reports }}/priorityclass-drop-requests.json

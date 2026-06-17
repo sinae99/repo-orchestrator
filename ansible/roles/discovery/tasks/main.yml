@@ -84,7 +84,7 @@
     GITLAB_TOKEN: "{{ gitlab_token }}"
   register: glab_projects
   changed_when: false
-  no_log: true
+  no_log: false
   when: not _repos_json_cached.stat.exists
 
 - name: Discovery | write repos.json (raw paginated output)

@@ -98,6 +98,7 @@ Write actions should behave under `reporker action --dry-run` (Ansible `--check 
 | [`inventory`](inventory/) | read | Lists matched files per repo, with counts and the repos that matched nothing |
 | [`grep`](grep/) | read | Records matching lines (with line numbers) per file — compliance sweeps |
 | [`priorityclass`](priorityclass/) | read | K8s manifests grouped by `priorityClassName` |
+| [`priorityclass-drop-requests`](priorityclass-drop-requests/) | write | Drop resource requests from medium/low priority pods (keeps limits) |
 | [`missing-file`](missing-file/) | read | Repos that do NOT contain a target file — governance audits |
 | [`line-append`](line-append/) | write | Idempotently ensures a line exists in each file |
 | [`replace`](replace/) | write | Regex find-and-replace across matched files |

@@ -150,6 +150,21 @@ reporker_action:
     priority_classes: [medium, low]
 ```
 
+**Drop resource requests from medium/low priority pods (keep limits):**
+
+```yaml
+reporker_action:
+  name: priorityclass-drop-requests
+  target_patterns: ["*.yaml", "*.yml"]
+  content_grep: priorityClassName
+  params:
+    priority_classes: [medium, low]
+
+git:
+  branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: remove resource requests from medium/low priority pods"
+```
+
 **Add a line to all requirements.txt files:**
 
 ```yaml
@@ -194,6 +209,7 @@ Then `./reporker action && ./reporker publish` (or add `--dry-run` to preview fi
 | [`inventory`](ansible/actions/inventory/) | read | Matched files per repo, with counts |
 | [`grep`](ansible/actions/grep/) | read | Matching lines (with line numbers) per file |
 | [`priorityclass`](ansible/actions/priorityclass/) | read | K8s manifests by priority class |
+| [`priorityclass-drop-requests`](ansible/actions/priorityclass-drop-requests/) | write | Drop requests from medium/low priority pods |
 | [`missing-file`](ansible/actions/missing-file/) | read | Repos that do NOT have a target file |
 | [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
 | [`replace`](ansible/actions/replace/) | write | Regex find-and-replace across files |
