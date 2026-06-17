@@ -1,10 +1,10 @@
 # reporker
 
-i built this because I kept hitting the same wall: **something needs to happen across a whole GitLab group**, and doing it repo by repo is crazy.
+i built this because i kept hitting this: **something needs to happen across a whole GitLab group**, and doing it repo by repo is crazy.
 
-we run microservices — one repo per service, sometimes 50–80 repos under one group. 
+we run microservices and multi repo arch — one repo per service, sometimes 50–80 repos under one group. 
 
-when I need to find every manifest still on `image: latest`, or remove some specific kubernetes values from manifest before a scheduling change, or check which services have no `.gitlab-ci.yml`… clicking through GitLab one repo at a time doesn't work.
+when i need to find every manifest still on `image: latest`, or remove some specific kubernetes values from manifest before a scheduling change, or check which services have no `.gitlab-ci.yml`… clicking through GitLab one repo at a time doesn't work.
 
 **reporker**:
 
@@ -16,7 +16,7 @@ If the action changes files, it can branch and push for you.
 GitLab group → clone → scan → action → report → publish
 ```
 
-## wat I've used it for
+## what i used it for
 
 - **Inventory** — list every `Dockerfile`, `docker-compose.yml`, or any file pattern in a group
 - **Grep at scale** — find K8s manifests with a specific `priorityClassName`, missing limits, old API versions
