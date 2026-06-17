@@ -61,19 +61,7 @@
 
 - name: PriorityClassDropRequests | drop resource requests in each matching manifest
   ansible.builtin.command:
-    argv: >-
-      {{
-        [
-          'python3',
-          _pcdr_script,
-          item,
-          '--priority-classes',
-          _pc_classes | join(','),
-          '--missing-class',
-          _pc_missing,
-        ]
-        + (['--check'] if ansible_check_mode else [])
-      }}
+    argv: "{{ ['python3', _pcdr_script, item, '--priority-classes', _pc_classes | join(','), '--missing-class', _pc_missing] + (['--check'] if ansible_check_mode else []) }}"
   loop: "{{ _pc_targets }}"
   register: _pcdr_results
   changed_when: false
@@ -89,19 +77,15 @@
   loop: "{{ _pcdr_results.results }}"
   when:
     - _pc_targets | length > 0
-    - item.rc | int not in [0, 3]
+    - item.rc | default(0) | int not in [0, 3]
 
 - name: PriorityClassDropRequests | set changed_files from results
   ansible.builtin.set_fact:
-    changed_files: >-
-      {{
-        _pcdr_results.results
-        | selectattr('rc', 'defined')
-        | selectattr('rc', 'equalto', 3)
-        | map(attribute='item')
-        | list
-      }}
-  when: _pc_targets | length > 0
+    changed_files: "{{ changed_files | default([]) + [item.item] }}"
+  loop: "{{ _pcdr_results.results | default([]) }}"
+  when:
+    - _pc_targets | length > 0
+    - item.rc | default(0) | int == 3
 
 - name: PriorityClassDropRequests | write action report
   check_mode: false

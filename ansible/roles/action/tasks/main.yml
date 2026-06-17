@@ -73,6 +73,15 @@
   ansible.builtin.set_fact:
     changed_files: "{{ changed_files | default([]) }}"
 
+- name: Action | detect unrecorded git changes after write actions
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/detect_git_changes.yml"
+  vars:
+    repos_to_scan: "{{ targets_by_repo | list }}"
+  when:
+    - changed_files | length == 0
+    - not ansible_check_mode | default(false) | bool
+    - (reporker_action.name | default('noop')) in reporker_write_actions
+
 - name: Action | attribute changed files to repos
   ansible.builtin.set_fact:
     changed_targets_by_repo: >-

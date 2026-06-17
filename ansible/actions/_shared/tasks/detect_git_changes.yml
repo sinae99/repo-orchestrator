@@ -1,0 +1,71 @@
+---
+# Detect modified files via git status when an action did not set changed_files.
+# Input:  repos_to_scan — list of repo directory paths
+# Output: changed_files, changed_targets_by_repo, changed_repos
+
+- name: DetectGitChanges | scan each repo
+  ansible.builtin.shell: |
+    set -euo pipefail
+    repo="{{ repo }}"
+    if ! git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      exit 0
+    fi
+    git -C "$repo" status --porcelain | while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      path="${line:3}"
+      case "$path" in
+        *" -> "*) path="${path##* -> }" ;;
+      esac
+      echo "${repo}/${path}"
+    done
+  args:
+    executable: /bin/bash
+  loop: "{{ repos_to_scan }}"
+  loop_control:
+    loop_var: repo
+  register: _dgc_scan
+  changed_when: false
+
+- name: DetectGitChanges | set changed_files from git status
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        _dgc_scan.results
+        | map(attribute='stdout_lines')
+        | flatten
+        | reject('equalto', '')
+        | unique
+        | list
+      }}
+
+- name: DetectGitChanges | attribute changed files to repos
+  ansible.builtin.set_fact:
+    changed_targets_by_repo: >-
+      {{
+        changed_targets_by_repo | default({})
+        | combine({
+            repo: (
+              changed_files
+              | select('match', '^' ~ (repo | regex_escape) ~ '/')
+              | map('regex_replace', '^' ~ (repo | regex_escape) ~ '/', '')
+              | list
+            )
+          })
+      }}
+  loop: "{{ repos_to_scan }}"
+  loop_control:
+    loop_var: repo
+  when: changed_files | length > 0
+
+- name: DetectGitChanges | derive changed_repos
+  ansible.builtin.set_fact:
+    changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
+    changed_repos: >-
+      {{
+        changed_targets_by_repo
+        | dict2items
+        | rejectattr('value', 'equalto', [])
+        | map(attribute='key')
+        | list
+      }}
+  when: changed_files | length > 0

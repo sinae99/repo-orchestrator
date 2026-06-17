@@ -56,24 +56,21 @@
     - changed_repos | length == 0
     - not _changed_json_stat.stat.exists
 
-- name: Publish | detect dirty repos in workspace (fallback)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    repo_dir="{{ item }}"
-    if git -C "$repo_dir" status --porcelain | grep -q .; then
-      echo "{{ item }}"
-    fi
-  args:
-    executable: /bin/bash
-  loop: "{{ changed_repos | default([]) }}"
-  register: dirty_check
-  changed_when: false
+- name: Publish | list workspace repositories for dirty scan
+  ansible.builtin.find:
+    paths: "{{ paths.workspace }}"
+    file_type: directory
+    depth: 1
+  register: _pub_workspace_repos
   when: changed_repos | length == 0
 
-- name: Publish | set changed_repos from dirty repos
-  ansible.builtin.set_fact:
-    changed_repos: "{{ dirty_check.results | default([]) | map(attribute='stdout') | map('trim') | reject('equalto','') | list }}"
-  when: changed_repos | length == 0
+- name: Publish | detect dirty repos from git status
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/detect_git_changes.yml"
+  vars:
+    repos_to_scan: "{{ _pub_workspace_repos.files | default([]) | map(attribute='path') | list }}"
+  when:
+    - changed_repos | length == 0
+    - _pub_workspace_repos is not skipped
 
 - name: Publish | skip if nothing changed
   ansible.builtin.debug:
@@ -115,7 +112,14 @@
     if [[ -s "$changefile_list" ]]; then
       while IFS= read -r f || [[ -n "$f" ]]; do
         [[ -z "$f" ]] && continue
-        git -C "$repo_dir" add -- "$f"
+        if [[ "$f" == "$repo_dir/"* ]]; then
+          rel="${f#${repo_dir}/}"
+        elif [[ "$f" == "$repo_dir" ]]; then
+          rel="."
+        else
+          rel="$f"
+        fi
+        git -C "$repo_dir" add -- "$rel"
       done < "$changefile_list"
     else
       git -C "$repo_dir" add -A

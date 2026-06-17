@@ -62,7 +62,7 @@
     _report_action_mode: >-
       {{
         'write'
-        if _report_action_name in reporker_write_actions
+        if (reporker_action.name | default('noop')) in reporker_write_actions
         else 'read'
       }}
     _report_files_matched: "{{ all_targets | length }}"
