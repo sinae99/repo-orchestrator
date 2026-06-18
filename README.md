@@ -20,7 +20,7 @@ GitLab group → clone → scan → action → report → publish
 
 - **Inventory** — list every `Dockerfile`, `docker-compose.yml`, or any file pattern in a group
 - **Grep at scale** — find K8s manifests with a specific `priorityClassName`, missing limits, old API versions
-- **Text changes** — add a line to every `requirements.txt`, bump a base image, drop in `CODEOWNERS`
+- **Text changes** — add a line to every `requirements.txt`
 - **Compliance sweeps** — search for patterns (`password:`, `image: latest`) before an audit
 
 read-only actions give you a report and stop. Write actions can open a branch per changed repo.
@@ -108,9 +108,8 @@ Copy-paste configs for every built-in action: [`ansible/group_vars/all.yml.examp
 | [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
 | [`replace`](ansible/actions/replace/) | write | Regex find-and-replace |
 | [`ensure-file`](ansible/actions/ensure-file/) | write | Creates a standard file in every repo |
-| [`noop`](ansible/actions/noop/) | read | Does nothing — useful for wiring |
 
-Need a new action? Copy [`ansible/actions/_template`](ansible/actions/_template/) — full guide in [`ansible/actions/README.md`](ansible/actions/README.md).
+(new action? Copy [`ansible/actions/_template`](ansible/actions/_template/) — full guide in [`ansible/actions/README.md`](ansible/actions/README.md))
 
 
 ## reports
