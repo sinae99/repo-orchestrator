@@ -1,13 +1,11 @@
 ---
-# Shared: write 02-breakdown.json for priority-class actions.
-# Requires all_targets and reporker_report.breakdown.
+# Write 02-breakdown.json (used by priorityclass action only).
 
-- name: PriorityBreakdown | resolve classifier script
+- name: PriorityClass | write manifest path list for breakdown
   ansible.builtin.set_fact:
-    _pc_breakdown_script: "{{ playbook_dir }}/../actions/_shared/files/priority_class.py"
     _pc_breakdown_list: "{{ paths.reports }}/.priority_breakdown_targets"
 
-- name: PriorityBreakdown | write manifest path list
+- name: PriorityClass | save manifest paths
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ _pc_breakdown_list }}"
@@ -15,23 +13,24 @@
     content: "{% for path in all_targets %}{{ path }}\n{% endfor %}"
   when: all_targets | length > 0
 
-- name: PriorityBreakdown | write breakdown report
+- name: PriorityClass | write breakdown report
   check_mode: false
   ansible.builtin.command:
     argv:
       - python3
-      - "{{ _pc_breakdown_script }}"
+      - "{{ _pc_script }}"
+      - breakdown
       - --output
       - "{{ paths.reports }}/{{ reporker_report.breakdown }}"
       - --missing-class
-      - "{{ reporker_action.params.missing_priority_class | default('medium') }}"
+      - "{{ _pc_missing }}"
       - --file-list
       - "{{ _pc_breakdown_list }}"
   register: _pc_breakdown_run
   changed_when: false
   when: all_targets | length > 0
 
-- name: PriorityBreakdown | write empty breakdown when no targets
+- name: PriorityClass | write empty breakdown when no targets
   check_mode: false
   ansible.builtin.copy:
     dest: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
@@ -40,7 +39,7 @@
       {{
         {
           "rule": "manifests without priorityClassName are classified as medium",
-          "missing_priority_class_maps_to": reporker_action.params.missing_priority_class | default('medium'),
+          "missing_priority_class_maps_to": _pc_missing,
           "priority_classes": ["critical", "high", "medium", "low"],
           "summary": {
             "total_manifests_scanned": 0,
@@ -60,16 +59,16 @@
       }}
   when: all_targets | length == 0
 
-- name: PriorityBreakdown | load breakdown for summary facts
+- name: PriorityClass | load breakdown summary
   ansible.builtin.slurp:
     src: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
   register: _pc_breakdown_slurp
 
-- name: PriorityBreakdown | set breakdown summary facts
+- name: PriorityClass | set breakdown summary facts
   ansible.builtin.set_fact:
     priority_breakdown_summary: "{{ (_pc_breakdown_slurp.content | b64decode | from_json).summary }}"
 
-- name: PriorityBreakdown | remove temporary manifest list
+- name: PriorityClass | remove temporary manifest list
   ansible.builtin.file:
     path: "{{ _pc_breakdown_list }}"
     state: absent

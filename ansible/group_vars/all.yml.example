@@ -68,46 +68,15 @@ reporker_action:
 #   target_patterns:
 #     - ".gitlab-ci.yml"
 
-# priorityclass (read) — classify manifests by effective priorityClassName:
-# Missing priorityClassName is treated as medium. Produces a full breakdown report.
+# priorityclass (write) — drop medium/low requests, then add priorityClassName where absent:
 # reporker_action:
 #   name: priorityclass
 #   target_patterns:
 #     - "*.yaml"
 #     - "*.yml"
-#   params:
-#     priority_classes:
-#       - critical
-#       - high
-#       - medium
-#       - low
-
-# priorityclass-drop-requests (write) — drop requests, keep limits for medium/low:
-# Medium includes manifests with no priorityClassName.
-# reporker_action:
-#   name: priorityclass-drop-requests
-#   target_patterns:
-#     - "*.yaml"
-#     - "*.yml"
-#   params:
-#     priority_classes:
-#       - medium
-#       - low
 # git:
-#   branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
-#   commit_message: "chore: remove resource requests from medium/low priority pods"
-
-# priorityclass-ensure-medium (write) — add priorityClassName where pod templates omit it:
-# reporker_action:
-#   name: priorityclass-ensure-medium
-#   target_patterns:
-#     - "*.yaml"
-#     - "*.yml"
-#   params:
-#     priority_class: medium
-# git:
-#   branch_name: "reporker-ensure-medium-{{ lookup('pipe', 'date +%Y%m%d') }}"
-#   commit_message: "chore: add priorityClassName medium to pod templates"
+#   branch_name: "reporker-priorityclass-{{ lookup('pipe', 'date +%Y%m%d') }}"
+#   commit_message: "chore: drop medium/low requests and add priorityClassName medium where missing"
 
 # line-append (write) — ensure a line exists in every requirements.txt:
 # reporker_action:

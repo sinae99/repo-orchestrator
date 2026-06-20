@@ -103,9 +103,7 @@ Copy-paste configs for every built-in action: [`ansible/group_vars/all.yml.examp
 | [`inventory`](ansible/actions/inventory/) | read | Matched files per repo |
 | [`grep`](ansible/actions/grep/) | read | Matching lines with line numbers |
 | [`missing-file`](ansible/actions/missing-file/) | read | Repos that do NOT have a target file |
-| [`priorityclass`](ansible/actions/priorityclass/) | read | Classify manifests by priority (missing → medium) |
-| [`priorityclass-drop-requests`](ansible/actions/priorityclass-drop-requests/) | write | Drop requests from medium/low pods |
-| [`priorityclass-ensure-medium`](ansible/actions/priorityclass-ensure-medium/) | write | Add `priorityClassName: medium` where missing |
+| [`priorityclass`](ansible/actions/priorityclass/) | write | Drop medium/low requests, add `priorityClassName: medium` where missing |
 | [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
 | [`replace`](ansible/actions/replace/) | write | Regex find-and-replace |
 | [`ensure-file`](ansible/actions/ensure-file/) | write | Creates a standard file in every repo |

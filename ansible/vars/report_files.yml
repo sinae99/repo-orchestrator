@@ -8,8 +8,7 @@ reporker_write_actions:
   - line-append
   - replace
   - ensure-file
-  - priorityclass-drop-requests
-  - priorityclass-ensure-medium
+  - priorityclass
 
 reporker_report:
   summary: "01-summary.txt"

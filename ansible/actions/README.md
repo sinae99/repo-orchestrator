@@ -61,7 +61,7 @@ reporker_action:
     - ".gitlab-ci.yml"
 ```
 
-**Classify manifests by priority tier**:
+**Drop medium/low requests, then add `priorityClassName: medium` where missing**:
 
 ```yaml
 reporker_action:
@@ -69,46 +69,10 @@ reporker_action:
   target_patterns:
     - "*.yaml"
     - "*.yml"
-  params:
-    priority_classes:
-      - critical
-      - high
-      - medium
-      - low
-```
-
-**Remove resource requests from medium/low pods**:
-
-```yaml
-reporker_action:
-  name: priorityclass-drop-requests
-  target_patterns:
-    - "*.yaml"
-    - "*.yml"
-  params:
-    priority_classes:
-      - medium
-      - low
 
 git:
-  branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
-  commit_message: "chore: remove resource requests from medium/low priority pods"
-```
-
-**Add `priorityClassName: medium` where pod templates omit it**:
-
-```yaml
-reporker_action:
-  name: priorityclass-ensure-medium
-  target_patterns:
-    - "*.yaml"
-    - "*.yml"
-  params:
-    priority_class: medium
-
-git:
-  branch_name: "reporker-ensure-medium-{{ lookup('pipe', 'date +%Y%m%d') }}"
-  commit_message: "chore: add priorityClassName medium to pod templates"
+  branch_name: "reporker-priorityclass-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: drop medium/low requests and add priorityClassName medium where missing"
 ```
 
 **Add a line to all requirements.txt files:**
@@ -129,9 +93,7 @@ reporker_action:
 | `inventory` | read | — |
 | `grep` | read | `pattern`, `ignore_case` |
 | `missing-file` | read | — |
-| `priorityclass` | read | `priority_classes` |
-| `priorityclass-drop-requests` | write | `priority_classes` |
-| `priorityclass-ensure-medium` | write | `priority_class` |
+| `priorityclass` | write | `drop_requests_for`, `ensure_priority_class` |
 | `line-append` | write | `ensure_line`, `insertafter` |
 | `replace` | write | `regexp`, `replace` |
 | `ensure-file` | write | `path`, `content`, `overwrite` |
@@ -213,7 +175,7 @@ reporker_action:
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 ```
 
-Shared helpers in [`_shared/`](_shared/) — `write_action_report.yml`, `priority_breakdown.yml`, `clear_reports.yml`.
+Shared helpers in [`_shared/`](_shared/) — generic utilities for all actions (`write_action_report.yml`, `clear_reports.yml`). Priority-class logic lives only in [`priorityclass/`](priorityclass/).
 
 Report filenames are fixed — don't invent new ones:
 
