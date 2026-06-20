@@ -97,6 +97,18 @@ reporker_action:
 #   branch_name: "reporker-drop-requests-{{ lookup('pipe', 'date +%Y%m%d') }}"
 #   commit_message: "chore: remove resource requests from medium/low priority pods"
 
+# priorityclass-ensure-medium (write) — add priorityClassName where pod templates omit it:
+# reporker_action:
+#   name: priorityclass-ensure-medium
+#   target_patterns:
+#     - "*.yaml"
+#     - "*.yml"
+#   params:
+#     priority_class: medium
+# git:
+#   branch_name: "reporker-ensure-medium-{{ lookup('pipe', 'date +%Y%m%d') }}"
+#   commit_message: "chore: add priorityClassName medium to pod templates"
+
 # line-append (write) — ensure a line exists in every requirements.txt:
 # reporker_action:
 #   name: line-append

@@ -9,6 +9,7 @@ reporker_write_actions:
   - replace
   - ensure-file
   - priorityclass-drop-requests
+  - priorityclass-ensure-medium
 
 reporker_report:
   summary: "01-summary.txt"

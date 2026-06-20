@@ -95,6 +95,22 @@ git:
   commit_message: "chore: remove resource requests from medium/low priority pods"
 ```
 
+**Add `priorityClassName: medium` where pod templates omit it**:
+
+```yaml
+reporker_action:
+  name: priorityclass-ensure-medium
+  target_patterns:
+    - "*.yaml"
+    - "*.yml"
+  params:
+    priority_class: medium
+
+git:
+  branch_name: "reporker-ensure-medium-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: add priorityClassName medium to pod templates"
+```
+
 **Add a line to all requirements.txt files:**
 
 ```yaml
@@ -115,6 +131,7 @@ reporker_action:
 | `missing-file` | read | — |
 | `priorityclass` | read | `priority_classes` |
 | `priorityclass-drop-requests` | write | `priority_classes` |
+| `priorityclass-ensure-medium` | write | `priority_class` |
 | `line-append` | write | `ensure_line`, `insertafter` |
 | `replace` | write | `regexp`, `replace` |
 | `ensure-file` | write | `path`, `content`, `overwrite` |
