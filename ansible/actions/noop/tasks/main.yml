@@ -1,7 +1,17 @@
 ---
-# Action: noop (read-only)
-# Does nothing — use for wiring tests or scan-only runs.
+# Action: noop (read)
+# Does nothing — wiring tests or scan-only dry runs.
 
-- name: No-op | set changed_files
+- name: No-op | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      summary:
+        files_scanned: "{{ all_targets | length }}"
+        note: "noop — no work performed"
+
+- name: No-op | write 03-action.json
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
+
+- name: No-op | set changed_files (read)
   ansible.builtin.set_fact:
     changed_files: []

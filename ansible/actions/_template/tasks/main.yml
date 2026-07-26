@@ -1,20 +1,20 @@
 ---
-# Action: _template
+# Action: _template (read)
 #
-# Copy to start a new action:
+# Start a new action:
 #   cp -r ansible/actions/_template ansible/actions/my-action
-# Then set reporker_action.name: my-action in ansible/group_vars/all.yml.
+# Then set reporker_action.name: my-action
 #
-# Provided by the engine before this file runs:
-#   all_targets        — flat list of matched files (absolute paths)
-#   targets_by_repo    — { repo_path: [file, ...] }, includes empty repos
-#   repos_with_targets — repos that matched at least one file
-#   reporker_action.params — custom params from config
-#   paths.reports      — report output directory
+# Engine gives you:
+#   all_targets, targets_by_repo, repos_with_targets
+#   reporker_action.params, paths.reports
 #
 # Contract:
-#   1. (recommended) write 03-action.json via reporker_report.action
-#   2. (required) set changed_files before finishing
+#   1. write 03-action.json via _shared/tasks/write_action_report.yml
+#   2. set changed_files ([] for read; absolute paths you changed for write)
+#   3. respect --dry-run on write actions
+#   4. header: # Action: <name> (read|write)
+#   5. add a copy-paste example to ansible/group_vars/all.yml.example
 
 - name: Template | resolve params
   ansible.builtin.set_fact:
@@ -35,11 +35,11 @@
 - name: Template | write 03-action.json
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 
-- name: Template | set changed_files (read-only)
+- name: Template | set changed_files (read)
   ansible.builtin.set_fact:
     changed_files: []
 
-# Write action example — replace the read-only finish above:
+# Write action sketch — swap in for the read finish above:
 #
 # - name: Template | edit each target
 #   ansible.builtin.replace:

@@ -1,58 +1,51 @@
 # =============================================================================
 # reporker config example
-# ./reporker init copies this to group_vars/all.yml — edit that file, not this one.
-# Copy-paste action configs: ansible/actions/README.md
-# group_vars/all.yml is gitignored so your group ID never gets committed.
+# ./reporker init → copies this to group_vars/all.yml (gitignored). Edit that.
+# More copy-paste configs: ansible/actions/README.md
 # =============================================================================
 
-# --- GitLab connection (discovery uses glab API; clone/push use SSH) ---
+# --- GitLab (discovery via glab API; clone/push via SSH) ---
 gitlab:
-  host: gitlab.com                   # your GitLab instance hostname
-  group_id: 12345                    # numeric group ID to scan (change this!)
-  # Personal access token (needs api scope). Path relative to playbook_dir.
-  # The token file is the only auth step — reporker hands it to glab for you.
-  # Create with: printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
+  host: gitlab.com
+  group_id: 12345                    # change this
+  # PAT with api scope — only auth step:
+  #   printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
   token_file: "{{ playbook_dir }}/../../glab/token"
-  # Filter repos by name (last path segment, case-insensitive).
-  # Empty list = clone everything in the group.
-  repo_filter: []
+  repo_filter: []                    # empty = whole group; or ["api", "worker"]
 
-# --- Local paths ---
 paths:
   workspace: "{{ playbook_dir }}/../workspace"
   reports:   "{{ playbook_dir }}/../reports"
 
-# --- Git settings for the publish phase ---
 git:
   branch_name:    "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
   commit_message: "chore: reporker automated change"
 
-# --- Pluggable action ---
-# reporker_action.name            : folder under ansible/actions/<name>/
-# reporker_action.target_patterns : globs for ansible.builtin.find (recurse=true)
-# reporker_action.content_grep    : (optional) only keep files whose content matches this string
-# reporker_action.params          : arbitrary dict available as reporker_action.params in tasks
+# --- Action ---
+# name            → ansible/actions/<name>/
+# target_patterns → globs (recurse)
+# content_grep    → optional content filter
+# params          → action-specific
 reporker_action:
   name: inventory
   target_patterns:
     - "Dockerfile"
     - "Dockerfile.*"
-  # content_grep: ""             # leave empty or omit to pass all matched files to the action
+  # content_grep: ""
   params: {}
 
 # ---------------------------------------------------------------------------
-# Example action configs (copy one over the reporker_action block above).
-# Read actions just write a report; write actions can be published.
+# Copy one block over reporker_action (and git, when shown).
 # ---------------------------------------------------------------------------
 
-# inventory (read) — list every matched file per repo:
+# inventory (read) — list matched files per repo:
 # reporker_action:
 #   name: inventory
 #   target_patterns:
 #     - "Dockerfile"
 #     - "docker-compose.y*ml"
 
-# grep (read) — find a pattern and record matching lines group-wide:
+# grep (read) — pattern matches with line numbers:
 # reporker_action:
 #   name: grep
 #   target_patterns:
@@ -62,13 +55,19 @@ reporker_action:
 #     pattern: "image:\\s*latest"
 #     ignore_case: false
 
-# missing-file (read) — which repos do NOT have a required file:
+# missing-file (read) — repos that lack a required file:
 # reporker_action:
 #   name: missing-file
 #   target_patterns:
 #     - ".gitlab-ci.yml"
 
-# priorityclass (write) — drop medium/low requests, then add priorityClassName where absent:
+# noop (read) — wiring / scan-only:
+# reporker_action:
+#   name: noop
+#   target_patterns:
+#     - "*"
+
+# priorityclass (write) — drop medium/low requests, ensure priorityClassName:
 # reporker_action:
 #   name: priorityclass
 #   target_patterns:
@@ -78,7 +77,7 @@ reporker_action:
 #   branch_name: "reporker-priorityclass-{{ lookup('pipe', 'date +%Y%m%d') }}"
 #   commit_message: "chore: drop medium/low requests and add priorityClassName medium where missing"
 
-# line-append (write) — ensure a line exists in every requirements.txt:
+# line-append (write) — ensure a line exists:
 # reporker_action:
 #   name: line-append
 #   target_patterns:
@@ -87,7 +86,7 @@ reporker_action:
 #     ensure_line: "# managed by reporker"
 #     insertafter: EOF
 
-# replace (write) — regex find-and-replace across matched files:
+# replace (write) — regex find-and-replace:
 # reporker_action:
 #   name: replace
 #   target_patterns:
@@ -96,7 +95,7 @@ reporker_action:
 #     regexp: "^FROM python:3\\.9"
 #     replace: "FROM python:3.12"
 
-# ensure-file (write) — drop a standard file into every repo if missing:
+# ensure-file (write) — create a standard file if missing:
 # reporker_action:
 #   name: ensure-file
 #   target_patterns:

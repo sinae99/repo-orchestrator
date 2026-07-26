@@ -1,13 +1,11 @@
 # glab/
 
-Stuff reporker needs to talk to GitLab. See the [main README](../README.md).
+GitLab auth + discovery cache. See the [main README](../README.md).
 
 | File | What |
 |---|---|
-| `token` | Your personal access token (`api` scope) — don't commit this |
-| `repos.txt` | Clone URLs — regenerated every `./reporker clone` |
-
-One-time setup:
+| `token` | personal access token (`api` scope) — never commit |
+| `repos.txt` | clone URLs — rewritten on every `./reporker clone` |
 
 ```bash
 printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token

@@ -1,31 +1,16 @@
 # reporker
 
-i built this because i kept hitting this: **something needs to happen across a whole GitLab group**, and doing it repo by repo is crazy.
+i kept needing the same thing across a whole GitLab group — find every `image: latest`, drop some namespace junk, check who has no `.gitlab-ci.yml`. doing that repo by repo with 50–80 services is a joke.
 
-we run microservices and multi repo arch — one repo per service, sometimes 50–80 repos under one group. 
-
-when i need to find every manifest still on `image: latest`, or remove some specific kubernetes values from manifest before a scheduling change, or check which services have no `.gitlab-ci.yml`… clicking through GitLab one repo at a time doesn't work.
-
-**reporker**:
-
-point it at a group, tell it which files to look at, pick an action. It clones everything, scans, runs your logic, writes JSON reports. 
-
-If the action changes files, it can branch and push for you.
+**reporker** points at a group, takes file patterns + an action, then clones, scans, runs your logic, and writes reports. write actions can branch and push.
 
 ```
 GitLab group → clone → scan → action → report → publish
 ```
 
-## what i used it for
+needs: Ansible ≥ 2.14, `glab`, `git`, `jq`.
 
-- **Inventory** — list every `Dockerfile`, `docker-compose.yml`, or any file pattern in a group
-- **Grep at scale** — find K8s manifests with a specific `priorityClassName`, missing limits, old API versions
-- **Text changes** — add a line to every `requirements.txt`
-- **Compliance sweeps** — search for patterns (`password:`, `image: latest`) before an audit
-
-read-only actions give you a report and stop. Write actions can open a branch per changed repo.
-
-## Do
+## start
 
 ```bash
 git clone https://github.com/sinae99/repo-orchestrator.git && cd repo-orchestrator
@@ -40,90 +25,83 @@ printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
 ./reporker action
 ```
 
-
-reports go to `ansible/reports/`.
-
-To push changes:
+reports land in `ansible/reports/` — start with `01-summary.txt`.
 
 ```bash
-./reporker action --dry-run    # see the diff, don't touch files
-./reporker publish
+./reporker action --dry-run   # preview a write action
+./reporker publish            # branch + push changed repos
 ```
 
 ## cli
 
 | Command | Does |
 |---|---|
-| `./reporker init` | Create local config from the example |
-| `./reporker check` | Verify tools, config, and token |
-| `./reporker clone` | Discover repos + clone/update |
-| `./reporker scan` | Find target files only |
-| `./reporker action` | Scan, run action, write reports |
-| `./reporker publish` | Branch, commit, push changed repos |
-| `./reporker run` | clone → action, no push |
-| `./reporker all` | Full pipeline including publish |
+| `./reporker init` | config from example |
+| `./reporker check` | tools, config, token |
+| `./reporker clone` | discover + clone/update |
+| `./reporker scan` | find target files |
+| `./reporker action` | scan → action → reports |
+| `./reporker publish` | branch, commit, push |
+| `./reporker run` | clone → action (no push) |
+| `./reporker all` | full pipeline + publish |
 
 
-- `-- <args>` — pass straight to ansible-playbook, e.g. `./reporker action -- -e reporker_action.name=grep`
 
-`./reporker --help` for the rest.
+ansible-playbook:
 
+```bash
+./reporker action -- -e reporker_action.name=grep
+```
 
 ## conf
 
-`ansible/group_vars/all.yml` — created by `init`, gitignored:
+`ansible/group_vars/all.yml` — from `init`, gitignored:
 
 ```yaml
 gitlab:
   host: gitlab.com
-  group_id: 12345          # your group ID
-  repo_filter: []          # empty = whole group; or ["api", "worker"]
+  group_id: 12345
+  repo_filter: []          # empty = whole group
 
 reporker_action:
   name: inventory
   target_patterns:
     - "Dockerfile"
     - "Dockerfile.*"
-  content_grep: ""         # optional — only files containing this string
+  content_grep: ""         # optional content filter
   params: {}
 ```
 
-- `target_patterns` — file globs, searched recursively in each repo
-- `content_grep` — narrows results further (e.g. `priorityClassName`)
-- `name` — action to run, lives in `ansible/actions/<name>/`
-- `params` — whatever your action needs
+copy-paste configs for every built-in: [`all.yml.example`](ansible/group_vars/all.yml.example) · [`actions README`](ansible/actions/README.md)
 
-Copy-paste configs for every built-in action: [`ansible/group_vars/all.yml.example`](ansible/group_vars/all.yml.example) and [`ansible/actions/README.md`](ansible/actions/README.md).
-
-
-## my actions
+## actions
 
 | Action | | What |
 |---|---|---|
-| [`inventory`](ansible/actions/inventory/) | read | Matched files per repo |
-| [`grep`](ansible/actions/grep/) | read | Matching lines with line numbers |
-| [`missing-file`](ansible/actions/missing-file/) | read | Repos that do NOT have a target file |
-| [`priorityclass`](ansible/actions/priorityclass/) | write | Drop medium/low requests, add `priorityClassName: medium` where missing |
-| [`line-append`](ansible/actions/line-append/) | write | Idempotently adds a line |
-| [`replace`](ansible/actions/replace/) | write | Regex find-and-replace |
-| [`ensure-file`](ansible/actions/ensure-file/) | write | Creates a standard file in every repo |
+| [`inventory`](ansible/actions/inventory/) | read | matched files per repo |
+| [`grep`](ansible/actions/grep/) | read | matching lines + line numbers |
+| [`missing-file`](ansible/actions/missing-file/) | read | repos missing a target file |
+| [`priorityclass`](ansible/actions/priorityclass/) | write | drop medium/low requests, add `priorityClassName: medium` |
+| [`line-append`](ansible/actions/line-append/) | write | idempotent line add |
+| [`replace`](ansible/actions/replace/) | write | regex find-and-replace |
+| [`ensure-file`](ansible/actions/ensure-file/) | write | create a standard file if missing |
 
-(new action? Copy [`ansible/actions/_template`](ansible/actions/_template/) — full guide in [`ansible/actions/README.md`](ansible/actions/README.md))
+`noop` for wiring tests. new action → copy [`_template`](ansible/actions/_template/). full guide: [`ansible/actions/README.md`](ansible/actions/README.md)
 
+`priorityclass` needs PyYAML (`python3 -c 'import yaml'`).
 
 ## reports
 
-After `reporker action`, open **`ansible/reports/01-summary.txt`**. Filenames are fixed for every action — read them in order.
+after `action`, open **`ansible/reports/01-summary.txt`**. fixed names, every run:
 
 | # | File | What |
 |---|---|---|
-| 01 | `01-summary.txt` | Start here |
-| 02 | `02-breakdown.json` | Pod priority split (priority-class actions only) |
-| 03 | `03-action.json` | Action-specific results |
-| 04 | `04-scan.json` | Scan matches per repo |
-| 05 | `05-changed.json` | Changed files (write actions) |
-| 06 | `06-run.json` | Full machine-readable run record |
+| 01 | `01-summary.txt` | start here |
+| 02 | `02-breakdown.json` | priority-class split (when used) |
+| 03 | `03-action.json` | action results |
+| 04 | `04-scan.json` | scan matches |
+| 05 | `05-changed.json` | changed files (write) |
+| 06 | `06-run.json` | full run record |
 
-Manifests without `priorityClassName` count as **medium** in priority-class actions.
+more: [`ansible/reports/README.md`](ansible/reports/README.md)
 
-More detail: [`ansible/reports/README.md`](ansible/reports/README.md)

@@ -1,19 +1,17 @@
 ---
-# Action: priorityclass
-# Write action. One pass per manifest:
-#   1. remove container resource requests for medium/low pods
-#   2. add priorityClassName: medium where pod templates omit it
-# Manifests without priorityClassName are treated as medium for step 1.
-# Honors --dry-run (reporker action --dry-run) via Ansible check mode.
+# Action: priorityclass (write)
+# One pass per manifest:
+#   1. drop container resource requests for medium/low pods
+#   2. add priorityClassName where pod templates omit it
+# Manifests without priorityClassName count as medium for step 1.
+# Honors --dry-run. Needs PyYAML (python3).
 #
-# Configure in group_vars:
-#   reporker_action:
-#     name: priorityclass
-#     target_patterns: ["*.yaml", "*.yml"]
+# Params (optional — defaults shown):
+#   ensure_priority_class     — default "medium" (empty string = skip ensure)
+#   drop_requests_for         — default ["medium", "low"]
+#   missing_priority_class    — default "medium"
 #
-# Output:
-#   02-breakdown.json
-#   03-action.json
+# Also writes 02-breakdown.json.
 
 - name: PriorityClass | resolve script paths
   ansible.builtin.set_fact:
@@ -99,43 +97,43 @@
     - _pc_targets | length > 0
     - item.rc | default(0) | int not in [0, 3]
 
+- name: PriorityClass | init change tracking
+  ansible.builtin.set_fact:
+    changed_files: []
+    _pc_details: {}
+  when: _pc_targets | length > 0
+
 - name: PriorityClass | record changed manifests
   ansible.builtin.set_fact:
-    changed_files: "{{ changed_files | default([]) + [item.item] }}"
-    _pc_details: "{{ _pc_details | default({}) | combine({item.item: (item.stdout | default('{}') | from_json)}) }}"
+    changed_files: "{{ changed_files + [item.item] }}"
+    _pc_details: "{{ _pc_details | combine({item.item: (item.stdout | default('{}') | from_json)}) }}"
   loop: "{{ _pc_results.results | default([]) }}"
   when:
     - _pc_targets | length > 0
     - item.rc | default(0) | int == 3
 
-- name: PriorityClass | write action report
-  check_mode: false
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
-    mode: "0644"
-    content: |
-      {{
-        {
-          "action": "priorityclass",
-          "rule": "drop resource requests for medium/low, then add priorityClassName where absent",
-          "ensure_priority_class": _pc_ensure,
-          "drop_requests_for": _pc_drop,
-          "missing_priority_class_maps_to": _pc_missing,
-          "check_mode": ansible_check_mode,
-          "summary": {
-            "total_manifests_scanned": all_targets | length,
-            "manifests_targeted": _pc_targets | default([]) | length,
-            "manifests_changed": changed_files | length,
-            "ensure_targets": _pc_ensure_targets | default([]) | length,
-            "drop_targets": _pc_drop_targets | default([]) | length,
-            "priority_breakdown": priority_breakdown_summary | default({})
-          },
-          "targets": _pc_targets | default([]),
-          "changes_by_file": _pc_details | default({}),
-          "changed_files": changed_files,
-          "breakdown_report": reporker_report.breakdown
-        } | to_nice_json
-      }}
+- name: PriorityClass | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      rule: "drop resource requests for medium/low, then add priorityClassName where absent"
+      ensure_priority_class: "{{ _pc_ensure }}"
+      drop_requests_for: "{{ _pc_drop }}"
+      missing_priority_class_maps_to: "{{ _pc_missing }}"
+      check_mode: "{{ ansible_check_mode }}"
+      summary:
+        total_manifests_scanned: "{{ all_targets | length }}"
+        manifests_targeted: "{{ _pc_targets | default([]) | length }}"
+        manifests_changed: "{{ changed_files | length }}"
+        ensure_targets: "{{ _pc_ensure_targets | default([]) | length }}"
+        drop_targets: "{{ _pc_drop_targets | default([]) | length }}"
+        priority_breakdown: "{{ priority_breakdown_summary | default({}) }}"
+      targets: "{{ _pc_targets | default([]) }}"
+      changes_by_file: "{{ _pc_details | default({}) }}"
+      changed_files: "{{ changed_files }}"
+      breakdown_report: "{{ reporker_report.breakdown }}"
+
+- name: PriorityClass | write 03-action.json
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 
 - name: PriorityClass | print summary
   ansible.builtin.debug:

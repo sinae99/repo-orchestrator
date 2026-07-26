@@ -1,5 +1,5 @@
 ---
-# Action: inventory (read-only)
+# Action: inventory (read)
 # Lists every file matched by the scan phase.
 
 - name: Inventory | build per-repo counts
@@ -22,8 +22,6 @@
         )
       }}
 
-# Repos that the scan visited but where nothing matched — useful on its own
-# (e.g. "which repos have no Dockerfile?").
 - name: Inventory | list repos with no matches
   ansible.builtin.set_fact:
     _inv_no_matches: >-
@@ -35,28 +33,22 @@
         | list
       }}
 
+- name: Inventory | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      target_patterns: "{{ reporker_action.target_patterns | default([]) }}"
+      content_grep: "{{ reporker_action.content_grep | default('') }}"
+      summary:
+        repos_scanned: "{{ targets_by_repo | length }}"
+        repos_with_matches: "{{ repos_with_targets | length }}"
+        repos_without_matches: "{{ _inv_no_matches | length }}"
+        total_files: "{{ all_targets | length }}"
+      files_by_repo: "{{ targets_by_repo }}"
+      counts_by_repo: "{{ _inv_by_repo | default({}) }}"
+      repos_without_matches: "{{ _inv_no_matches }}"
+
 - name: Inventory | write 03-action.json
-  check_mode: false
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
-    mode: "0644"
-    content: |
-      {{
-        {
-          "action": "inventory",
-          "target_patterns": reporker_action.target_patterns | default([]),
-          "content_grep": reporker_action.content_grep | default(''),
-          "summary": {
-            "repos_scanned": targets_by_repo | length,
-            "repos_with_matches": repos_with_targets | length,
-            "repos_without_matches": _inv_no_matches | length,
-            "total_files": all_targets | length
-          },
-          "files_by_repo": targets_by_repo,
-          "counts_by_repo": _inv_by_repo | default({}),
-          "repos_without_matches": _inv_no_matches
-        } | to_nice_json
-      }}
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 
 - name: Inventory | print summary
   ansible.builtin.debug:
@@ -65,6 +57,6 @@
       {{ repos_with_targets | length }} repo(s)
       → {{ paths.reports }}/{{ reporker_report.action }}
 
-- name: Inventory | set changed_files (read-only)
+- name: Inventory | set changed_files (read)
   ansible.builtin.set_fact:
     changed_files: []

@@ -1,14 +1,10 @@
 ---
-# Action: replace
-# Write action. Regex find-and-replace across every matched file. Use it to
-# bump a version, swap a registry/host, or rename a value group-wide.
-# Honors --dry-run (reporker action --dry-run) via Ansible check mode.
+# Action: replace (write)
+# Regex find-and-replace across every matched file. Honors --dry-run.
 #
-# Required params:
-#   reporker_action.params.regexp   — extended regex to match (ansible.builtin.replace)
-#   reporker_action.params.replace  — replacement string (may use \1, \2 backrefs)
-#
-# Output: 03-action.json
+# Params:
+#   regexp   (required) — pattern (ansible.builtin.replace)
+#   replace  (required) — replacement (\1, \2 backrefs ok)
 
 - name: Replace | require params
   ansible.builtin.assert:
@@ -46,25 +42,19 @@
       }}
   when: all_targets | length > 0
 
+- name: Replace | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      regexp: "{{ reporker_action.params.regexp }}"
+      replace: "{{ reporker_action.params.replace }}"
+      check_mode: "{{ ansible_check_mode }}"
+      summary:
+        files_scanned: "{{ all_targets | length }}"
+        files_changed: "{{ changed_files | length }}"
+      changed_files: "{{ changed_files }}"
+
 - name: Replace | write 03-action.json
-  check_mode: false
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
-    mode: "0644"
-    content: |
-      {{
-        {
-          "action": "replace",
-          "regexp": reporker_action.params.regexp,
-          "replace": reporker_action.params.replace,
-          "check_mode": ansible_check_mode,
-          "summary": {
-            "files_scanned": all_targets | length,
-            "files_changed": changed_files | length
-          },
-          "changed_files": changed_files
-        } | to_nice_json
-      }}
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 
 - name: Replace | print summary
   ansible.builtin.debug:

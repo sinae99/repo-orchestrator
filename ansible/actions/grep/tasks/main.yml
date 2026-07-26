@@ -1,6 +1,10 @@
 ---
-# Action: grep (read-only)
+# Action: grep (read)
 # Records matching lines (with line numbers) per file.
+#
+# Params:
+#   pattern       (required) — regex to search for
+#   ignore_case   (optional) — default false
 
 - name: Grep | require params.pattern
   ansible.builtin.assert:
@@ -27,7 +31,6 @@
   register: _grep
   changed_when: false
 
-# Keep only files that actually matched something.
 - name: Grep | collect files with matches
   ansible.builtin.set_fact:
     _grep_hits: >-
@@ -49,25 +52,19 @@
       }}
     _grep_total: "{{ _grep_hits | map(attribute='stdout_lines') | map('length') | sum }}"
 
+- name: Grep | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      pattern: "{{ _grep_pattern }}"
+      ignore_case: "{{ _grep_ignorecase }}"
+      summary:
+        files_scanned: "{{ all_targets | length }}"
+        files_with_matches: "{{ _grep_hits | length }}"
+        total_matches: "{{ _grep_total | int }}"
+      matches_by_file: "{{ _grep_matches }}"
+
 - name: Grep | write 03-action.json
-  check_mode: false
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
-    mode: "0644"
-    content: |
-      {{
-        {
-          "action": "grep",
-          "pattern": _grep_pattern,
-          "ignore_case": _grep_ignorecase,
-          "summary": {
-            "files_scanned": all_targets | length,
-            "files_with_matches": _grep_hits | length,
-            "total_matches": _grep_total | int
-          },
-          "matches_by_file": _grep_matches
-        } | to_nice_json
-      }}
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 
 - name: Grep | print summary
   ansible.builtin.debug:
@@ -75,6 +72,6 @@
       {{ _grep_total }} match(es) in {{ _grep_hits | length }} of
       {{ all_targets | length }} file(s) → {{ paths.reports }}/{{ reporker_report.action }}
 
-- name: Grep | set changed_files (read-only)
+- name: Grep | set changed_files (read)
   ansible.builtin.set_fact:
     changed_files: []

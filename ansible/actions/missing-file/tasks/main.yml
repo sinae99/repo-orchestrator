@@ -1,12 +1,7 @@
 ---
-# Action: missing-file
-# Read-only governance audit. Reports which repos do NOT contain any file
-# matching your target_patterns. The inverse of inventory — answer questions
-# like "which repos have no LICENSE / .gitlab-ci.yml / CODEOWNERS / Dockerfile?".
-#
-# Just set target_patterns to the file you expect everywhere; no params needed.
-#
-# Output: 03-action.json (read-only — changed_files is always [])
+# Action: missing-file (read)
+# Repos that do NOT match any target_patterns — inverse of inventory.
+# No params; set target_patterns to the file you expect everywhere.
 
 - name: Missing-file | split repos by presence of a match
   ansible.builtin.set_fact:
@@ -23,26 +18,20 @@
         | map(attribute='key') | list
       }}
 
+- name: Missing-file | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      target_patterns: "{{ reporker_action.target_patterns | default([]) }}"
+      content_grep: "{{ reporker_action.content_grep | default('') }}"
+      summary:
+        repos_scanned: "{{ targets_by_repo | length }}"
+        repos_with_file: "{{ _mf_present | length }}"
+        repos_missing_file: "{{ _mf_missing | length }}"
+      repos_missing_file: "{{ _mf_missing | sort }}"
+      repos_with_file: "{{ _mf_present | sort }}"
+
 - name: Missing-file | write 03-action.json
-  check_mode: false
-  ansible.builtin.copy:
-    dest: "{{ paths.reports }}/{{ reporker_report.action }}"
-    mode: "0644"
-    content: |
-      {{
-        {
-          "action": "missing-file",
-          "target_patterns": reporker_action.target_patterns | default([]),
-          "content_grep": reporker_action.content_grep | default(''),
-          "summary": {
-            "repos_scanned": targets_by_repo | length,
-            "repos_with_file": _mf_present | length,
-            "repos_missing_file": _mf_missing | length
-          },
-          "repos_missing_file": _mf_missing | sort,
-          "repos_with_file": _mf_present | sort
-        } | to_nice_json
-      }}
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
 
 - name: Missing-file | print summary
   ansible.builtin.debug:
@@ -51,6 +40,6 @@
       are missing {{ reporker_action.target_patterns | default([]) | join(', ') }}
       → {{ paths.reports }}/{{ reporker_report.action }}
 
-- name: Missing-file | set changed_files (read-only)
+- name: Missing-file | set changed_files (read)
   ansible.builtin.set_fact:
     changed_files: []
