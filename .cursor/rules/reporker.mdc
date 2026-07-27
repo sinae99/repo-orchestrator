@@ -1,0 +1,20 @@
+---
+description: reporker agent workflow — recipes, actions, offline verify
+alwaysApply: true
+---
+
+# reporker
+
+This repo is **reporker**: multi-repo scan/change across a GitLab group.
+
+Before writing actions, recipes, or running the CLI, read and follow
+**[AGENTS.md](AGENTS.md)** at the repository root.
+
+Key rules:
+
+- Prefer a new **recipe** under `recipes/` over a new action.
+- New actions: copy `ansible/actions/_template/`, write `meta.yml` + `tasks/main.yml`.
+- Never edit `ansible/roles/**`, `ansible/group_vars/all.yml`, `glab/`, or workspace.
+- Never run `clone`, `publish`, or `all`.
+- Always verify: `./reporker validate <action>` then `./reporker test --recipe <name>`.
+- Hand the user the handoff block from AGENTS.md.

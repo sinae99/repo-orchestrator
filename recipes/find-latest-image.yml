@@ -1,0 +1,13 @@
+---
+# Recipe: find image: latest in YAML manifests.
+recipe:
+  summary: "Find image: latest in YAML manifests"
+
+reporker_action:
+  name: grep
+  target_patterns:
+    - "*.yaml"
+    - "*.yml"
+  params:
+    pattern: "image:\\s*latest"
+    ignore_case: false

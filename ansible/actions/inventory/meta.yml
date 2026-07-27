@@ -1,0 +1,7 @@
+---
+action:
+  name: inventory
+  mode: read
+  summary: List every file matched by the scan, grouped by repo.
+  params: []
+  example_recipe: recipes/list-dockerfiles.yml

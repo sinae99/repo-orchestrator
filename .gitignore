@@ -13,9 +13,13 @@ ansible/reports/*
 !ansible/reports/.keep
 !ansible/reports/README.md
 
+# Offline test workspace (rebuilt by ./reporker test)
+tests/.work/
+
 # Ansible
 *.retry
 ansible/.ansible-tmp/
+.ansible/
 
 # Python
 __pycache__/
@@ -29,3 +33,6 @@ tmp*/
 .vscode/
 .idea/
 .claude/
+
+# Local hamgit export (push separately, then delete)
+COPY/

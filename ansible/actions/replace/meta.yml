@@ -1,0 +1,13 @@
+---
+action:
+  name: replace
+  mode: write
+  summary: Regex find-and-replace across every matched file.
+  params:
+    - name: regexp
+      required: true
+      description: Pattern for ansible.builtin.replace
+    - name: replace
+      required: true
+      description: Replacement; \1 backrefs supported
+  example_recipe: recipes/bump-python.yml

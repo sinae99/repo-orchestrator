@@ -3,18 +3,20 @@
 #
 # Start a new action:
 #   cp -r ansible/actions/_template ansible/actions/my-action
-# Then set reporker_action.name: my-action
+# Then edit meta.yml (set mode: read|write) and tasks/main.yml.
+# Set reporker_action.name: my-action — or write a recipe under recipes/.
 #
 # Engine gives you:
 #   all_targets, targets_by_repo, repos_with_targets
 #   reporker_action.params, paths.reports
 #
 # Contract:
-#   1. write 03-action.json via _shared/tasks/write_action_report.yml
-#   2. set changed_files ([] for read; absolute paths you changed for write)
-#   3. respect --dry-run on write actions
-#   4. header: # Action: <name> (read|write)
-#   5. add a copy-paste example to ansible/group_vars/all.yml.example
+#   1. meta.yml with mode: read|write
+#   2. write 03-action.json via _shared/tasks/write_action_report.yml
+#   3. set changed_files ([] for read; absolute paths you changed for write)
+#   4. respect --dry-run on write actions
+#   5. header: # Action: <name> (read|write)
+#   6. add a recipe under recipes/
 
 - name: Template | resolve params
   ansible.builtin.set_fact:

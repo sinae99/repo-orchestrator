@@ -2,8 +2,7 @@
 # Fixed report filenames — same slots for every action (name lives inside JSON).
 # Read in order: 01 → 08. Optional slots are omitted from 01-summary.txt when absent.
 
-reporker_is_priority_action: "{{ (reporker_action.name | default('')) is match('^priorityclass') }}"
-
+# Legacy fallback when an action has no meta.yml. Prefer meta.yml mode: write|read.
 reporker_write_actions:
   - line-append
   - replace

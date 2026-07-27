@@ -1,0 +1,15 @@
+---
+# Recipe: drop medium/low requests and ensure priorityClassName medium.
+recipe:
+  summary: Drop medium/low requests and ensure priorityClassName medium
+
+reporker_action:
+  name: priorityclass
+  target_patterns:
+    - "*.yaml"
+    - "*.yml"
+  params: {}
+
+git:
+  branch_name: "reporker-priorityclass-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: drop medium/low requests and add priorityClassName medium where missing"

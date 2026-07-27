@@ -7,6 +7,10 @@
     state: directory
     mode: "0755"
 
+- name: Report | load action metadata
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/load_action_meta.yml"
+  when: reporker_action_mode is not defined
+
 - name: Report | load scan report when running after a prior scan
   ansible.builtin.include_vars:
     file: "{{ paths.reports }}/{{ reporker_report.scan }}"
@@ -59,18 +63,14 @@
 - name: Report | derive report metadata
   ansible.builtin.set_fact:
     _report_action_name: "{{ reporker_action.name | default('noop') }}"
-    _report_action_mode: >-
-      {{
-        'write'
-        if (reporker_action.name | default('noop')) in reporker_write_actions
-        else 'read'
-      }}
+    _report_action_mode: "{{ reporker_action_mode | default('read') }}"
     _report_files_matched: "{{ all_targets | length }}"
     _report_files_changed: "{{ changed_files | length }}"
     _report_generated_at: "{{ lookup('pipe', 'date -Iseconds') }}"
     _report_dry_run: "{{ ansible_check_mode | default(false) | bool }}"
     _report_content_grep: "{{ reporker_action.content_grep | default('') }}"
     _report_target_patterns: "{{ reporker_action.target_patterns | default([]) }}"
+    _report_scan_note: "{{ reporker_scan_note | default('') }}"
 
 - name: Report | check optional report files
   ansible.builtin.stat:
@@ -88,16 +88,12 @@
   ansible.builtin.slurp:
     src: "{{ paths.reports }}/{{ reporker_report.breakdown }}"
   register: _report_breakdown_slurp
-  when:
-    - reporker_is_priority_action | bool
-    - (_report_file_stats.results[1].stat.exists | default(false))
+  when: _report_file_stats.results[1].stat.exists | default(false)
 
 - name: Report | set breakdown summary fact
   ansible.builtin.set_fact:
     priority_breakdown_summary: "{{ (_report_breakdown_slurp.content | b64decode | from_json).summary }}"
-  when:
-    - reporker_is_priority_action | bool
-    - (_report_file_stats.results[1].stat.exists | default(false))
+  when: _report_file_stats.results[1].stat.exists | default(false)
 
 - name: Report | write run report
   check_mode: false
@@ -241,14 +237,11 @@
       {{
         (_report_target_patterns | join(', ') if _report_target_patterns | length > 0 else '—')
         + (
-          '  |  grep: ' ~ _report_content_grep
-          if (
-            _report_content_grep | length > 0
-            and not (reporker_is_priority_action | bool)
-          )
+          '  |  ' ~ _report_scan_note
+          if (_report_scan_note | length > 0)
           else (
-            '  |  K8s workloads + priorityClassName (missing → medium)'
-            if (reporker_is_priority_action | bool)
+            '  |  grep: ' ~ _report_content_grep
+            if (_report_content_grep | length > 0)
             else ''
           )
         )
@@ -281,7 +274,7 @@
     summary_next: "{{ _summary_next }}"
     summary_report_list: "{{ _summary_report_list }}"
     priority_breakdown_summary: "{{ priority_breakdown_summary | default({}) }}"
-    show_priority_breakdown: "{{ (reporker_is_priority_action | bool) and (priority_breakdown_summary | default({}) | length > 0) }}"
+    show_priority_breakdown: "{{ (_report_file_stats.results[1].stat.exists | default(false)) and (priority_breakdown_summary | default({}) | length > 0) }}"
 
 - name: Report | print summary
   ansible.builtin.debug:

@@ -28,15 +28,13 @@
     path: "{{ paths.reports }}/{{ _publish_changed_report }}"
   register: _changed_json_stat
 
-- name: Publish | load changed report when running standalone
+- name: Publish | load changed report
   ansible.builtin.include_vars:
     file: "{{ paths.reports }}/{{ _publish_changed_report }}"
     name: _changed_report
-  when:
-    - changed_repos is not defined
-    - _changed_json_stat.stat.exists
+  when: _changed_json_stat.stat.exists
 
-- name: Publish | hydrate facts from changed report
+- name: Publish | hydrate facts from changed report when running standalone
   ansible.builtin.set_fact:
     changed_repos: "{{ _changed_report.repos_changed | default([]) }}"
     changed_targets_by_repo: "{{ _changed_report.changed_targets_by_repo | default({}) }}"
@@ -44,10 +42,27 @@
     - changed_repos is not defined
     - _changed_json_stat.stat.exists
 
+- name: Publish | prefer git settings recorded in changed report
+  ansible.builtin.set_fact:
+    _publish_branch: >-
+      {{
+        (_changed_report.git.branch_name | default(''))
+        if (_changed_json_stat.stat.exists and (_changed_report.git.branch_name | default('') | length > 0))
+        else git.branch_name
+      }}
+    _publish_commit_message: >-
+      {{
+        (_changed_report.git.commit_message | default(''))
+        if (_changed_json_stat.stat.exists and (_changed_report.git.commit_message | default('') | length > 0))
+        else git.commit_message
+      }}
+
 - name: Publish | set safe defaults
   ansible.builtin.set_fact:
     changed_repos: "{{ changed_repos | default([]) }}"
     changed_targets_by_repo: "{{ changed_targets_by_repo | default({}) }}"
+    _publish_branch: "{{ _publish_branch | default(git.branch_name) }}"
+    _publish_commit_message: "{{ _publish_commit_message | default(git.commit_message) }}"
 
 - name: Publish | fail if no change report exists
   ansible.builtin.fail:
@@ -79,7 +94,7 @@
 
 - name: Publish | write changed file list per repo
   ansible.builtin.copy:
-    dest: "{{ item }}/.repo_orch_changed_files"
+    dest: "{{ item }}/.reporker-changed-files"
     mode: "0644"
     content: |
       {% for f in (changed_targets_by_repo[item] | default([])) %}
@@ -93,7 +108,7 @@
     set -euo pipefail
 
     repo_dir="{{ item }}"
-    branch="{{ git.branch_name }}"
+    branch="{{ _publish_branch }}"
 
     echo "==> REPO: $repo_dir"
 
@@ -108,7 +123,7 @@
     git -C "$repo_dir" pull --ff-only
     git -C "$repo_dir" checkout -B "$branch"
 
-    changefile_list="$repo_dir/.repo_orch_changed_files"
+    changefile_list="$repo_dir/.reporker-changed-files"
     if [[ -s "$changefile_list" ]]; then
       while IFS= read -r f || [[ -n "$f" ]]; do
         [[ -z "$f" ]] && continue
@@ -126,7 +141,7 @@
     fi
 
     if git -C "$repo_dir" status --porcelain | grep -q .; then
-      git -C "$repo_dir" commit -m "{{ git.commit_message }}"
+      git -C "$repo_dir" commit -m "{{ _publish_commit_message }}"
       git -C "$repo_dir" push -u origin "$branch"
       echo "PUSHED: $branch"
     else
@@ -146,7 +161,7 @@
 
 - name: Publish | cleanup temporary staging files
   ansible.builtin.file:
-    path: "{{ item }}/.repo_orch_changed_files"
+    path: "{{ item }}/.reporker-changed-files"
     state: absent
   loop: "{{ changed_repos }}"
   when: changed_repos | length > 0

@@ -1,0 +1,10 @@
+---
+# Recipe: repos that lack .gitlab-ci.yml.
+recipe:
+  summary: List repos missing .gitlab-ci.yml
+
+reporker_action:
+  name: missing-file
+  target_patterns:
+    - ".gitlab-ci.yml"
+  params: {}

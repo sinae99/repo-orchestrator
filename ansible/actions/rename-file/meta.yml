@@ -1,0 +1,13 @@
+---
+action:
+  name: rename-file
+  mode: write
+  summary: Git-aware rename of matched files (git mv) by basename prefix.
+  params:
+    - name: from
+      required: true
+      description: Current basename prefix (exact match or prefix before '.')
+    - name: to
+      required: true
+      description: New basename prefix (dockerfile → Dockerfile, dockerfile.dev → Dockerfile.dev)
+  example_recipe: recipes/rename-dockerfile.yml

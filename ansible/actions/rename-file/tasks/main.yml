@@ -1,0 +1,166 @@
+---
+# Action: rename-file (write)
+# Renames each matched file by basename prefix using git mv when possible.
+# Honors --dry-run.
+#
+# Params:
+#   from  (required) — current basename prefix (exact or before '.')
+#   to    (required) — new basename prefix
+#
+# Examples:
+#   from: dockerfile  to: Dockerfile
+#     dockerfile       → Dockerfile
+#     dockerfile.prod  → Dockerfile.prod
+
+- name: Rename-file | require params
+  ansible.builtin.assert:
+    that:
+      - reporker_action.params is defined
+      - reporker_action.params.from is defined
+      - reporker_action.params.from | length > 0
+      - reporker_action.params.to is defined
+      - reporker_action.params.to | length > 0
+    fail_msg: "Set reporker_action.params.from and params.to for the rename-file action."
+    quiet: true
+
+- name: Rename-file | resolve params
+  ansible.builtin.set_fact:
+    _rf_from: "{{ reporker_action.params.from }}"
+    _rf_to: "{{ reporker_action.params.to }}"
+
+- name: Rename-file | plan renames
+  ansible.builtin.set_fact:
+    _rf_plan: []
+
+- name: Rename-file | build rename plan for each target
+  ansible.builtin.set_fact:
+    _rf_plan: "{{ _rf_plan + [_rf_entry] }}"
+  vars:
+    _rf_dir: "{{ item | dirname }}"
+    _rf_base: "{{ item | basename }}"
+    _rf_new_base: >-
+      {{
+        _rf_to
+        if (_rf_base == _rf_from)
+        else (
+          (_rf_to ~ _rf_base[(_rf_from | length):])
+          if (_rf_base == _rf_from or _rf_base is match('^' ~ (_rf_from | regex_escape) ~ '\\.'))
+          else ''
+        )
+      }}
+    _rf_dest: "{{ (_rf_dir ~ '/' ~ _rf_new_base) if (_rf_new_base | length > 0) else '' }}"
+    _rf_entry: >-
+      {{
+        {
+          'src': item,
+          'dest': _rf_dest,
+          'repo': item | dirname
+        }
+        if (_rf_dest | length > 0 and _rf_dest != item)
+        else omit
+      }}
+  loop: "{{ all_targets }}"
+  when:
+    - all_targets | length > 0
+    - _rf_dest | length > 0
+    - _rf_dest != item
+
+- name: Rename-file | set changed_files (none planned)
+  ansible.builtin.set_fact:
+    changed_files: []
+    _rf_details: []
+  when: (_rf_plan | default([]) | length) == 0
+
+- name: Rename-file | apply renames (git mv when possible)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    src="{{ item.src }}"
+    dest="{{ item.dest }}"
+    dir="$(dirname "$src")"
+
+    if [[ -e "$dest" ]]; then
+      echo "SKIP exists: $dest"
+      exit 0
+    fi
+
+    if git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      # Resolve repo root so git mv paths are correct from any nested dir.
+      root="$(git -C "$dir" rev-parse --show-toplevel)"
+      rel_src="${src#"$root"/}"
+      rel_dest="${dest#"$root"/}"
+      if git -C "$root" ls-files --error-unmatch -- "$rel_src" >/dev/null 2>&1; then
+        git -C "$root" mv -- "$rel_src" "$rel_dest"
+      else
+        mv -- "$src" "$dest"
+        git -C "$root" add -A -- "$rel_src" "$rel_dest" 2>/dev/null || true
+      fi
+    else
+      mv -- "$src" "$dest"
+    fi
+    echo "RENAMED $src -> $dest"
+  args:
+    executable: /bin/bash
+  loop: "{{ _rf_plan }}"
+  register: _rf_results
+  when:
+    - (_rf_plan | default([]) | length) > 0
+    - not ansible_check_mode
+  changed_when: "'RENAMED' in (_rf_results.stdout | default(''))"
+
+- name: Rename-file | set changed_files from plan (check mode preview)
+  ansible.builtin.set_fact:
+    changed_files: "{{ _rf_plan | map(attribute='dest') | list }}"
+    _rf_details: "{{ _rf_plan }}"
+  when:
+    - (_rf_plan | default([]) | length) > 0
+    - ansible_check_mode | bool
+
+- name: Rename-file | set changed_files from results
+  ansible.builtin.set_fact:
+    changed_files: >-
+      {{
+        _rf_results.results
+        | default([])
+        | selectattr('stdout', 'defined')
+        | selectattr('stdout', 'search', 'RENAMED')
+        | map(attribute='item')
+        | map(attribute='dest')
+        | list
+      }}
+    _rf_details: >-
+      {{
+        _rf_results.results
+        | default([])
+        | selectattr('stdout', 'defined')
+        | selectattr('stdout', 'search', 'RENAMED')
+        | map(attribute='item')
+        | list
+      }}
+  when:
+    - (_rf_plan | default([]) | length) > 0
+    - not ansible_check_mode
+
+- name: Rename-file | build action report payload
+  ansible.builtin.set_fact:
+    _action_report:
+      from: "{{ _rf_from }}"
+      to: "{{ _rf_to }}"
+      check_mode: "{{ ansible_check_mode }}"
+      summary:
+        files_scanned: "{{ all_targets | length }}"
+        renames_planned: "{{ _rf_plan | default([]) | length }}"
+        files_changed: "{{ changed_files | length }}"
+      plan: "{{ _rf_plan | default([]) }}"
+      changed_files: "{{ changed_files }}"
+      renames: "{{ _rf_details | default([]) }}"
+
+- name: Rename-file | write 03-action.json
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/write_action_report.yml"
+
+- name: Rename-file | print summary
+  ansible.builtin.debug:
+    msg: >-
+      {{ changed_files | length }} of {{ all_targets | length }} file(s)
+      {{ 'would rename' if ansible_check_mode else 'renamed' }}
+      ({{ _rf_from }} → {{ _rf_to }})
+      → {{ paths.reports }}/{{ reporker_report.action }}

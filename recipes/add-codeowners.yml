@@ -1,0 +1,18 @@
+---
+# Recipe: roll out a CODEOWNERS file where missing.
+recipe:
+  summary: Ensure CODEOWNERS exists in every repo
+
+reporker_action:
+  name: ensure-file
+  target_patterns:
+    - "CODEOWNERS"
+  params:
+    path: CODEOWNERS
+    content: |
+      * @your-team
+    overwrite: false
+
+git:
+  branch_name: "reporker-codeowners-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: add CODEOWNERS"

@@ -1,0 +1,9 @@
+---
+action:
+  name: _template
+  mode: read
+  summary: Starter template — copy this directory to create a new action.
+  params:
+    - name: greeting
+      required: false
+      description: Debug greeting printed during the template run

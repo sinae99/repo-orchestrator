@@ -1,0 +1,37 @@
+---
+# Optional scan filter for priorityclass.
+# Receives: repos, targets_by_repo
+# Must set: targets_by_repo (filtered)
+
+- name: PriorityClass scan_filter | keep K8s workload manifests
+  ansible.builtin.shell: |
+    set -euo pipefail
+    list={{ targets_by_repo[item] | to_json | quote }}
+    count=$(echo "$list" | jq 'length')
+    if [ "$count" -eq 0 ]; then exit 0; fi
+    echo "$list" | jq -r '.[]' | while IFS= read -r f; do
+      if grep -qE '^[[:space:]]*priorityClassName:[[:space:]]*' "$f" 2>/dev/null; then
+        echo "$f"
+        continue
+      fi
+      if grep -qE '^[[:space:]]*kind:[[:space:]]*(Deployment|StatefulSet|DaemonSet|Job|CronJob|Pod)([[:space:]]|$)' "$f" 2>/dev/null; then
+        echo "$f"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  loop: "{{ repos }}"
+  register: _priority_workload_results
+  changed_when: false
+  check_mode: false
+
+- name: PriorityClass scan_filter | rebuild targets_by_repo
+  ansible.builtin.set_fact:
+    targets_by_repo: >-
+      {{
+        targets_by_repo | combine({
+          item.item: (item.stdout_lines | map('trim') | reject('equalto', '') | list)
+        })
+      }}
+  loop: "{{ _priority_workload_results.results }}"
+  when: _priority_workload_results is not skipped

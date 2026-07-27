@@ -1,0 +1,64 @@
+---
+# Load ansible/actions/<name>/meta.yml and set:
+#   reporker_action_meta  — full action: block (or {})
+#   reporker_action_mode  — read | write
+#   reporker_action_dir   — absolute path to the action directory
+#   reporker_scan_filter  — absolute path to optional scan_filter tasks, or ""
+#   reporker_scan_note    — optional scope note for summaries, or ""
+#
+# Fallback when meta.yml is missing: legacy reporker_write_actions list, then read.
+
+- name: LoadActionMeta | resolve action directory
+  ansible.builtin.set_fact:
+    reporker_action_dir: >-
+      {{
+        (reporker_action.tasks_file | dirname | dirname)
+        if (reporker_action.tasks_file is defined and reporker_action.tasks_file | length > 0)
+        else (playbook_dir ~ '/../actions/' ~ (reporker_action.name | default('noop')))
+      }}
+
+- name: LoadActionMeta | check for meta.yml
+  ansible.builtin.stat:
+    path: "{{ reporker_action_dir }}/meta.yml"
+  register: _meta_stat
+
+- name: LoadActionMeta | read meta.yml
+  ansible.builtin.include_vars:
+    file: "{{ reporker_action_dir }}/meta.yml"
+    name: _meta_raw
+  when: _meta_stat.stat.exists
+
+- name: LoadActionMeta | set facts from meta.yml
+  ansible.builtin.set_fact:
+    reporker_action_meta: "{{ _meta_raw.action | default({}) }}"
+    reporker_action_mode: "{{ (_meta_raw.action.mode | default('read')) | lower }}"
+    reporker_scan_filter: >-
+      {{
+        (reporker_action_dir ~ '/' ~ (_meta_raw.action.scan_filter | default('')))
+        if (_meta_raw.action.scan_filter | default('') | length > 0)
+        else ''
+      }}
+    reporker_scan_note: "{{ _meta_raw.action.scan_note | default('') }}"
+  when: _meta_stat.stat.exists
+
+- name: LoadActionMeta | fallback when meta.yml is missing
+  ansible.builtin.set_fact:
+    reporker_action_meta: {}
+    reporker_action_mode: >-
+      {{
+        'write'
+        if (reporker_action.name | default('noop')) in (reporker_write_actions | default([]))
+        else 'read'
+      }}
+    reporker_scan_filter: ""
+    reporker_scan_note: ""
+  when: not _meta_stat.stat.exists
+
+- name: LoadActionMeta | assert mode is valid
+  ansible.builtin.assert:
+    that:
+      - reporker_action_mode in ['read', 'write']
+    fail_msg: >-
+      Invalid action mode '{{ reporker_action_mode }}' for
+      {{ reporker_action.name | default('noop') }}. Use read or write in meta.yml.
+    quiet: true

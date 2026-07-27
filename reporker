@@ -9,44 +9,64 @@ INVENTORY="$ANSIBLE_DIR/inventory.ini"
 CONFIG="$ANSIBLE_DIR/group_vars/all.yml"
 CONFIG_EXAMPLE="$ANSIBLE_DIR/group_vars/all.yml.example"
 TOKEN_FILE="$ROOT/glab/token"
+RECIPES_DIR="$ROOT/recipes"
+ACTIONS_DIR="$ANSIBLE_DIR/actions"
+FIXTURES_DIR="$ROOT/tests/fixtures/repos"
+FIXTURE_CONFIG="$ROOT/tests/fixture-config.yml"
+TEST_WORK="$ROOT/tests/.work"
+VALIDATE_SCRIPT="$ROOT/tests/validate_action.py"
 
-# Extra args forwarded to ansible-playbook (filled by --dry-run and `-- ...`).
+# Extra args forwarded to ansible-playbook (filled by --dry-run, --recipe, and `-- ...`).
 EXTRA_ARGS=()
+RECIPE_FILE=""
+RECIPE_NAME=""
 
 usage() {
   cat <<'EOF'
 reporker — scan and change files across every repo in a GitLab group
 
 Usage:
-  reporker init              Create local config from the example
-  reporker check             Verify tools, config, and token are ready
-  reporker clone             Discover repos and clone/update them
-  reporker scan              Find target files (writes ansible/reports/04-scan.json)
-  reporker action            Scan, run your action, write reports
-  reporker publish           Branch, commit, and push changed repos
-  reporker run               clone → action (audit or modify, no push)
-  reporker all               Full pipeline including publish
+  reporker init                 Create local config from the example
+  reporker check                Verify tools, config, and token are ready
+  reporker list                 Catalogue of actions and recipes
+  reporker validate [action]    Lint action contract + ansible syntax
+  reporker test [--recipe N]    Offline fixture run (no token, no network)
+  reporker clone                Discover repos and clone/update them
+  reporker scan                 Find target files (writes ansible/reports/04-scan.json)
+  reporker action               Scan, run your action, write reports
+  reporker publish              Branch, commit, and push changed repos
+  reporker run                  clone → action (audit or modify, no push)
+  reporker all                  Full pipeline including publish
 
 Flags:
-  --dry-run                  Preview changes without writing them (ansible --check --diff)
-  -- <args...>               Forward the rest straight to ansible-playbook
+  --recipe <name|path>          Load a recipe from recipes/<name>.yml (or a path)
+  --dry-run                     Preview changes without writing them (ansible --check --diff)
+  -- <args...>                  Forward the rest straight to ansible-playbook
 
 Setup (once):
   1. reporker init
-  2. Edit ansible/group_vars/all.yml (GitLab host, group ID, action)
+  2. Edit ansible/group_vars/all.yml (GitLab host, group ID)
   3. printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
   4. reporker check
 
-Examples:
-  reporker clone && reporker action          # audit a group (read-only action)
-  reporker run                               # same, from scratch
-  reporker action --dry-run                  # preview a write action's changes
-  reporker action && reporker publish        # apply changes and open branches
-  reporker action -- -e reporker_action.name=grep   # override config on the fly
+Agent workflow:
+  1. Open this repo in your editor with an AI agent
+  2. Describe the change — the agent reads AGENTS.md
+  3. Agent writes a recipe (and action if needed), runs validate + test
+  4. You run the commands it hands you
 
-Config:  ansible/group_vars/all.yml
-Reports: ansible/reports/01-summary.txt  (start here)
-Docs:    ansible/actions/README.md
+Examples:
+  reporker list
+  reporker action --recipe bump-python --dry-run
+  reporker action --recipe bump-python
+  reporker publish
+  reporker test --recipe bump-python
+  reporker validate replace
+
+Config:  ansible/group_vars/all.yml   (where — host, group, token)
+Recipes: recipes/*.yml                (what — action + params)
+Reports: ansible/reports/01-summary.txt
+Docs:    AGENTS.md · docs/README.md
 EOF
 }
 
@@ -64,13 +84,47 @@ require_ansible() {
     || die "ansible-playbook not found (need Ansible ≥ 2.14)"
 }
 
+# Resolve --recipe <name|path> into RECIPE_FILE (absolute) and RECIPE_NAME.
+resolve_recipe() {
+  local arg="$1"
+  local candidate=""
+
+  if [[ -f "$arg" ]]; then
+    candidate="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"
+  elif [[ -f "$RECIPES_DIR/${arg}.yml" ]]; then
+    candidate="$RECIPES_DIR/${arg}.yml"
+  elif [[ -f "$RECIPES_DIR/${arg}.yaml" ]]; then
+    candidate="$RECIPES_DIR/${arg}.yaml"
+  elif [[ -f "$RECIPES_DIR/$arg" ]]; then
+    candidate="$RECIPES_DIR/$arg"
+  else
+    die "recipe not found: $arg (tried recipes/${arg}.yml)"
+  fi
+
+  RECIPE_FILE="$candidate"
+  RECIPE_NAME="$(basename "$candidate")"
+  RECIPE_NAME="${RECIPE_NAME%.yml}"
+  RECIPE_NAME="${RECIPE_NAME%.yaml}"
+}
+
 # Split command flags from playbook pass-through args.
-# Sets the global EXTRA_ARGS array.
+# Sets the global EXTRA_ARGS array and optionally RECIPE_FILE.
 parse_flags() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run)
         EXTRA_ARGS+=(--check --diff)
+        shift
+        ;;
+      --recipe)
+        [[ $# -ge 2 ]] || die "--recipe requires a name or path"
+        resolve_recipe "$2"
+        EXTRA_ARGS+=(-e "@${RECIPE_FILE}")
+        shift 2
+        ;;
+      --recipe=*)
+        resolve_recipe "${1#--recipe=}"
+        EXTRA_ARGS+=(-e "@${RECIPE_FILE}")
         shift
         ;;
       --)
@@ -95,6 +149,21 @@ run_playbook() {
   )
 }
 
+# Run playbook against fixture config (no all.yml / token required).
+run_fixture_playbook() {
+  local tags="$1"
+  shift
+  require_ansible
+  [[ -f "$FIXTURE_CONFIG" ]] || die "fixture config missing: tests/fixture-config.yml"
+  (
+    cd "$ANSIBLE_DIR"
+    ansible-playbook -i "$INVENTORY" "$PLAYBOOK" --tags "$tags" \
+      -e "@${FIXTURE_CONFIG}" \
+      "${EXTRA_ARGS[@]}" \
+      "$@"
+  )
+}
+
 cmd_init() {
   mkdir -p "$ROOT/glab" "$ANSIBLE_DIR/group_vars"
   if [[ ! -f "$CONFIG" ]]; then
@@ -107,12 +176,13 @@ cmd_init() {
     cat <<EOF
 
 Next steps:
-  1. Edit ansible/group_vars/all.yml
+  1. Edit ansible/group_vars/all.yml (GitLab host, group ID)
   2. Store your GitLab token (this is the only auth step):
        printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
   3. Check your setup:
        reporker check
-  4. Run: reporker clone && reporker action
+  4. Open this repo in your AI agent and describe the change
+     (or: reporker list && reporker action --recipe <name>)
 EOF
   fi
 }
@@ -130,12 +200,14 @@ check_item() {
 
 cmd_check() {
   local fails=0
+  local action_name=""
 
   echo "Tools:"
   check_item "ansible-playbook" command -v ansible-playbook || fails=$((fails + 1))
   check_item "glab"             command -v glab             || fails=$((fails + 1))
   check_item "git"              command -v git              || fails=$((fails + 1))
   check_item "jq"               command -v jq               || fails=$((fails + 1))
+  check_item "python3"          command -v python3          || fails=$((fails + 1))
 
   echo "Config:"
   if [[ -f "$CONFIG" ]]; then
@@ -146,9 +218,57 @@ cmd_check() {
     else
       echo "  [ok]  group_id has been set"
     fi
+    action_name="$(
+      python3 -c "
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(0)
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f) or {}
+name = (data.get('reporker_action') or {}).get('name', '')
+print(name)
+" "$CONFIG" 2>/dev/null || true
+    )"
+    if [[ -n "$action_name" ]]; then
+      if [[ -f "$ACTIONS_DIR/$action_name/tasks/main.yml" ]]; then
+        echo "  [ok]  action '$action_name' exists"
+      else
+        echo "  [--]  action '$action_name' not found under ansible/actions/"
+        fails=$((fails + 1))
+      fi
+    fi
   else
     echo "  [--]  config missing — run: reporker init"
     fails=$((fails + 1))
+  fi
+
+  if [[ -n "$RECIPE_FILE" ]]; then
+    echo "Recipe:"
+    echo "  [ok]  $RECIPE_FILE"
+    local recipe_action
+    recipe_action="$(
+      python3 -c "
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(0)
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f) or {}
+name = (data.get('reporker_action') or {}).get('name', '')
+print(name)
+" "$RECIPE_FILE" 2>/dev/null || true
+    )"
+    if [[ -n "$recipe_action" ]]; then
+      if [[ -f "$ACTIONS_DIR/$recipe_action/tasks/main.yml" ]]; then
+        echo "  [ok]  recipe action '$recipe_action' exists"
+      else
+        echo "  [--]  recipe action '$recipe_action' not found under ansible/actions/"
+        fails=$((fails + 1))
+      fi
+    fi
   fi
 
   echo "Token:"
@@ -161,11 +281,255 @@ cmd_check() {
 
   echo
   if [[ "$fails" -eq 0 ]]; then
-    echo "All checks passed. You're ready: reporker clone && reporker action"
+    echo "All checks passed. You're ready: reporker clone && reporker action [--recipe name]"
   else
     echo "$fails check(s) failed. Fix the items marked [--] above."
     return 1
   fi
+}
+
+cmd_list() {
+  echo "Actions:"
+  echo "--------"
+  local dir name mode summary meta
+  shopt -s nullglob
+  for dir in "$ACTIONS_DIR"/*/; do
+    name="$(basename "$dir")"
+    [[ "$name" == _* ]] && continue
+    meta="$dir/meta.yml"
+    mode="?"
+    summary=""
+    if [[ -f "$meta" ]]; then
+      eval "$(
+        python3 -c "
+import sys
+try:
+    import yaml
+except ImportError:
+    print('mode=\"?\"; summary=\"\"')
+    sys.exit(0)
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f) or {}
+action = data.get('action') or {}
+mode = action.get('mode', '?')
+summary = action.get('summary', '').replace('\"', \"'\")
+print(f'mode=\"{mode}\"; summary=\"{summary}\"')
+" "$meta" 2>/dev/null || echo 'mode="?"; summary=""'
+      )"
+    elif [[ -f "$dir/tasks/main.yml" ]]; then
+      mode="(no meta.yml)"
+    else
+      continue
+    fi
+    printf "  %-18s %-6s  %s\n" "$name" "$mode" "$summary"
+  done
+
+  echo
+  echo "Recipes:"
+  echo "--------"
+  local recipe rsummary
+  for recipe in "$RECIPES_DIR"/*.yml "$RECIPES_DIR"/*.yaml; do
+    [[ -f "$recipe" ]] || continue
+    name="$(basename "$recipe")"
+    name="${name%.yml}"
+    name="${name%.yaml}"
+    [[ "$name" == "README" ]] && continue
+    eval "$(
+      python3 -c "
+import sys
+try:
+    import yaml
+except ImportError:
+    print('rsummary=\"\"')
+    sys.exit(0)
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f) or {}
+recipe = data.get('recipe') or {}
+summary = recipe.get('summary', '').replace('\"', \"'\")
+action = (data.get('reporker_action') or {}).get('name', '')
+print(f'rsummary=\"{summary}\"; action_name=\"{action}\"')
+" "$recipe" 2>/dev/null || echo 'rsummary=""; action_name=""'
+    )"
+    printf "  %-28s → %-14s  %s\n" "$name" "${action_name:-?}" "$rsummary"
+  done
+  shopt -u nullglob
+  echo
+  echo "Run:  reporker action --recipe <name>"
+  echo "Docs: docs/README.md · AGENTS.md"
+}
+
+cmd_validate() {
+  local target="${1:-}"
+  require_ansible
+
+  if [[ -n "$target" ]]; then
+    [[ -d "$ACTIONS_DIR/$target" ]] || die "action not found: $target"
+  fi
+
+  echo "Validating action contract..."
+  if [[ -f "$VALIDATE_SCRIPT" ]]; then
+    if [[ -n "$target" ]]; then
+      python3 "$VALIDATE_SCRIPT" "$target"
+    else
+      python3 "$VALIDATE_SCRIPT"
+    fi
+  else
+    die "missing $VALIDATE_SCRIPT"
+  fi
+
+  echo
+  echo "Ansible syntax check..."
+  (
+    cd "$ANSIBLE_DIR"
+    # Prefer fixture config so validate works without init / real credentials.
+    if [[ -f "$FIXTURE_CONFIG" ]]; then
+      ansible-playbook -i "$INVENTORY" "$PLAYBOOK" --syntax-check \
+        -e "@${FIXTURE_CONFIG}" \
+        ${target:+-e "reporker_action.name=${target}"} \
+        "${EXTRA_ARGS[@]}"
+    elif [[ -f "$CONFIG" ]]; then
+      ansible-playbook -i "$INVENTORY" "$PLAYBOOK" --syntax-check \
+        ${target:+-e "reporker_action.name=${target}"} \
+        "${EXTRA_ARGS[@]}"
+    else
+      die "need tests/fixture-config.yml or ansible/group_vars/all.yml for syntax-check"
+    fi
+  )
+  echo
+  echo "Validation passed."
+}
+
+# Rebuild tests/.work/workspace from fixtures and git-init each copy.
+setup_fixtures() {
+  [[ -d "$FIXTURES_DIR" ]] || die "fixtures missing: tests/fixtures/repos/"
+  rm -rf "$TEST_WORK"
+  mkdir -p "$TEST_WORK/workspace" "$TEST_WORK/reports"
+
+  local src dest name
+  shopt -s nullglob
+  for src in "$FIXTURES_DIR"/*/; do
+    name="$(basename "$src")"
+    dest="$TEST_WORK/workspace/$name"
+    cp -a "$src" "$dest"
+    (
+      cd "$dest"
+      git init -q
+      git config user.email "reporker-test@localhost"
+      git config user.name "reporker test"
+      git add -A
+      git commit -q -m "fixture baseline" --allow-empty
+    )
+  done
+  shopt -u nullglob
+
+  local count
+  count="$(find "$TEST_WORK/workspace" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+  [[ "$count" -gt 0 ]] || die "no fixture repos copied"
+  echo "Fixtures ready: $count repo(s) in tests/.work/workspace/"
+}
+
+assert_fixtures_clean() {
+  local dirty=0 repo
+  shopt -s nullglob
+  for repo in "$TEST_WORK/workspace"/*/; do
+    if [[ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]]; then
+      echo "  DIRTY (expected clean after --check): $(basename "$repo")"
+      git -C "$repo" status --short
+      dirty=$((dirty + 1))
+    fi
+  done
+  shopt -u nullglob
+  [[ "$dirty" -eq 0 ]] || die "$dirty fixture repo(s) were modified during --check (honor ansible_check_mode)"
+  echo "  [ok]  fixtures stayed clean under --check"
+}
+
+print_fixture_diffs() {
+  local repo has_diff=0
+  shopt -s nullglob
+  for repo in "$TEST_WORK/workspace"/*/; do
+    if [[ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]]; then
+      has_diff=1
+      echo
+      echo "── diff: $(basename "$repo") ──"
+      git -C "$repo" --no-pager status --short
+      # Include staged renames/changes (git mv) as well as unstaged edits.
+      git -C "$repo" --no-pager diff --stat HEAD
+      git -C "$repo" --no-pager diff HEAD
+    fi
+  done
+  shopt -u nullglob
+  if [[ "$has_diff" -eq 0 ]]; then
+    echo "(no file changes in fixtures)"
+  fi
+}
+
+cmd_test() {
+  local positional=()
+  # Allow: test [--recipe x] [action]  and flags mixed via parse_flags leftovers.
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run|--recipe|--recipe=*|-- )
+        # Hand remaining flags + this one to parse_flags by rebuilding.
+        break
+        ;;
+      -*)
+        break
+        ;;
+      *)
+        positional+=("$1")
+        shift
+        ;;
+    esac
+  done
+  # Parse remaining flags (may include --recipe / --dry-run).
+  if [[ $# -gt 0 ]]; then
+    parse_flags "$@"
+  fi
+
+  local override_action="${positional[0]:-}"
+
+  if [[ -n "$override_action" ]]; then
+    EXTRA_ARGS+=(-e "reporker_action.name=${override_action}")
+  fi
+
+  setup_fixtures
+
+  echo
+  echo "Pass 1: --check (must not modify fixtures)"
+  echo "-------------------------------------------"
+  run_fixture_playbook "scan,action,report" --check --diff
+  assert_fixtures_clean
+
+  # Reset fixtures for the real pass (check may have written reports only).
+  setup_fixtures
+
+  echo
+  echo "Pass 2: real run"
+  echo "----------------"
+  run_fixture_playbook "scan,action,report"
+
+  local reports="$TEST_WORK/reports"
+  [[ -f "$reports/03-action.json" ]] || die "missing 03-action.json after test run"
+  python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$reports/03-action.json" \
+    || die "03-action.json is not valid JSON"
+
+  if [[ -f "$reports/05-changed.json" ]]; then
+    python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$reports/05-changed.json" \
+      || die "05-changed.json is not valid JSON"
+  fi
+
+  echo
+  echo "Fixture diffs after real run:"
+  print_fixture_diffs
+
+  if [[ -f "$reports/01-summary.txt" ]]; then
+    echo
+    echo "════════════════════════════════ summary ════════════════════════════════"
+    cat "$reports/01-summary.txt"
+  fi
+
+  echo
+  echo "Test passed. Reports: tests/.work/reports/"
 }
 
 main() {
@@ -173,15 +537,41 @@ main() {
   shift || true
 
   case "$cmd" in
-    init)    cmd_init ;;
-    check)   cmd_check ;;
-    doctor)  echo "reporker: 'doctor' was renamed to 'check'" >&2; cmd_check ;;
-    clone)   parse_flags "$@"; run_playbook "discovery,workspace" ;;
-    scan)    parse_flags "$@"; run_playbook "scan" ;;
-    action)  parse_flags "$@"; run_playbook "scan,action,report" ;;
-    publish) parse_flags "$@"; run_playbook "publish" ;;
-    run)     parse_flags "$@"; run_playbook "discovery,workspace,scan,action,report" ;;
-    all)     parse_flags "$@"; run_playbook "discovery,workspace,scan,action,report,publish" ;;
+    init)     cmd_init ;;
+    check)
+      # Allow --recipe on check so recipe resolution is verified.
+      parse_flags "$@"
+      cmd_check
+      ;;
+    list)     cmd_list ;;
+    validate)
+      # Optional: validate [--recipe x] [action]
+      local v_args=()
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --recipe|--recipe=*|--dry-run|-- )
+            break
+            ;;
+          -*)
+            break
+            ;;
+          *)
+            v_args+=("$1")
+            shift
+            ;;
+        esac
+      done
+      if [[ $# -gt 0 ]]; then parse_flags "$@"; fi
+      cmd_validate "${v_args[0]:-}"
+      ;;
+    test)     cmd_test "$@" ;;
+    clone)    parse_flags "$@"; run_playbook "discovery,workspace" ;;
+    scan)     parse_flags "$@"; run_playbook "scan" ;;
+    action)   parse_flags "$@"; run_playbook "scan,action,report" ;;
+    publish)  parse_flags "$@"; run_playbook "publish" ;;
+    run)      parse_flags "$@"; run_playbook "discovery,workspace,scan,action,report" ;;
+    all)      parse_flags "$@"; run_playbook "discovery,workspace,scan,action,report,publish" ;;
+    doctor)   echo "reporker: 'doctor' was renamed to 'check'" >&2; parse_flags "$@"; cmd_check ;;
     -h|--help|help|"")
       usage
       ;;

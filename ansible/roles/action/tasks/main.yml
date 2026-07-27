@@ -1,6 +1,9 @@
 ---
 # Phase 4: Run the configured action (ansible/actions/<name>/tasks/main.yml).
 
+- name: Action | load action metadata
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/load_action_meta.yml"
+
 - name: Action | load scan report
   ansible.builtin.stat:
     path: "{{ paths.reports }}/{{ reporker_report.scan }}"
@@ -64,7 +67,7 @@
 
 - name: Action | run pluggable action
   ansible.builtin.debug:
-    msg: "Running '{{ reporker_action.name | default('noop') }}' on {{ all_targets | length }} target file(s)."
+    msg: "Running '{{ reporker_action.name | default('noop') }}' ({{ reporker_action_mode }}) on {{ all_targets | length }} target file(s)."
 
 - name: Action | include action tasks
   ansible.builtin.include_tasks: "{{ action_tasks_file }}"
@@ -80,7 +83,7 @@
   when:
     - changed_files | length == 0
     - not ansible_check_mode | default(false) | bool
-    - (reporker_action.name | default('noop')) in reporker_write_actions
+    - reporker_action_mode == 'write'
 
 - name: Action | attribute changed files to repos
   ansible.builtin.set_fact:

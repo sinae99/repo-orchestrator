@@ -1,0 +1,28 @@
+---
+# Fixture config for `./reporker test`.
+# Supplies every variable the pipeline reads so a fresh clone needs no init,
+# no all.yml, no token, and no network.
+
+gitlab:
+  host: fixtures.local
+  group_id: 0
+  token_file: "{{ playbook_dir }}/../../tests/.work/dummy-token"
+  repo_filter: []
+
+paths:
+  workspace: "{{ playbook_dir }}/../../tests/.work/workspace"
+  reports: "{{ playbook_dir }}/../../tests/.work/reports"
+
+git:
+  branch_name: "reporker-test"
+  commit_message: "chore: reporker fixture test"
+
+# Default action — overridden by --recipe or -e on the CLI.
+reporker_action:
+  name: inventory
+  target_patterns:
+    - "Dockerfile"
+    - "Dockerfile.*"
+    - "dockerfile"
+    - "dockerfile.*"
+  params: {}

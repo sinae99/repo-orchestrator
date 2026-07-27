@@ -1,0 +1,11 @@
+---
+# Recipe: inventory every Dockerfile in the group.
+recipe:
+  summary: List every Dockerfile across the group
+
+reporker_action:
+  name: inventory
+  target_patterns:
+    - "Dockerfile"
+    - "Dockerfile.*"
+  params: {}

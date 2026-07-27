@@ -1,7 +1,10 @@
 # =============================================================================
 # reporker config example
 # ./reporker init → copies this to group_vars/all.yml (gitignored). Edit that.
-# More copy-paste configs: ansible/actions/README.md
+#
+# This file is the WHERE (host, group, token).
+# Task configs (WHAT) live in recipes/*.yml — prefer those over editing
+# reporker_action here. See docs/README.md and AGENTS.md.
 # =============================================================================
 
 # --- GitLab (discovery via glab API; clone/push via SSH) ---
@@ -21,9 +24,9 @@ git:
   branch_name:    "reporker-{{ lookup('pipe', 'date +%Y%m%d') }}"
   commit_message: "chore: reporker automated change"
 
-# --- Action ---
+# --- Default action (overridden by --recipe) ---
 # name            → ansible/actions/<name>/
-# target_patterns → globs (recurse)
+# target_patterns → globs (recurse; includes hidden files like .gitlab-ci.yml)
 # content_grep    → optional content filter
 # params          → action-specific
 reporker_action:
@@ -35,73 +38,13 @@ reporker_action:
   params: {}
 
 # ---------------------------------------------------------------------------
-# Copy one block over reporker_action (and git, when shown).
+# Prefer recipes over editing this file for each task:
+#
+#   ./reporker list
+#   ./reporker action --recipe bump-python --dry-run
+#   ./reporker action --recipe bump-python
+#   ./reporker publish
+#
+# Starter recipes: recipes/
+# Docs: docs/README.md · AGENTS.md
 # ---------------------------------------------------------------------------
-
-# inventory (read) — list matched files per repo:
-# reporker_action:
-#   name: inventory
-#   target_patterns:
-#     - "Dockerfile"
-#     - "docker-compose.y*ml"
-
-# grep (read) — pattern matches with line numbers:
-# reporker_action:
-#   name: grep
-#   target_patterns:
-#     - "*.yaml"
-#     - "*.yml"
-#   params:
-#     pattern: "image:\\s*latest"
-#     ignore_case: false
-
-# missing-file (read) — repos that lack a required file:
-# reporker_action:
-#   name: missing-file
-#   target_patterns:
-#     - ".gitlab-ci.yml"
-
-# noop (read) — wiring / scan-only:
-# reporker_action:
-#   name: noop
-#   target_patterns:
-#     - "*"
-
-# priorityclass (write) — drop medium/low requests, ensure priorityClassName:
-# reporker_action:
-#   name: priorityclass
-#   target_patterns:
-#     - "*.yaml"
-#     - "*.yml"
-# git:
-#   branch_name: "reporker-priorityclass-{{ lookup('pipe', 'date +%Y%m%d') }}"
-#   commit_message: "chore: drop medium/low requests and add priorityClassName medium where missing"
-
-# line-append (write) — ensure a line exists:
-# reporker_action:
-#   name: line-append
-#   target_patterns:
-#     - "requirements.txt*"
-#   params:
-#     ensure_line: "# managed by reporker"
-#     insertafter: EOF
-
-# replace (write) — regex find-and-replace:
-# reporker_action:
-#   name: replace
-#   target_patterns:
-#     - "Dockerfile"
-#   params:
-#     regexp: "^FROM python:3\\.9"
-#     replace: "FROM python:3.12"
-
-# ensure-file (write) — create a standard file if missing:
-# reporker_action:
-#   name: ensure-file
-#   target_patterns:
-#     - "CODEOWNERS"
-#   params:
-#     path: CODEOWNERS
-#     content: |
-#       * @your-team
-#     overwrite: false

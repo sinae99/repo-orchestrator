@@ -1,0 +1,17 @@
+---
+# Recipe: bump Python base image 3.9 -> 3.12.
+recipe:
+  summary: Bump Python base image 3.9 → 3.12 in every Dockerfile
+
+reporker_action:
+  name: replace
+  target_patterns:
+    - "Dockerfile"
+    - "Dockerfile.*"
+  params:
+    regexp: "^FROM python:3\\.9"
+    replace: "FROM python:3.12"
+
+git:
+  branch_name: "reporker-bump-python-{{ lookup('pipe', 'date +%Y%m%d') }}"
+  commit_message: "chore: bump python base image to 3.12"

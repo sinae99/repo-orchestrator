@@ -1,0 +1,7 @@
+---
+action:
+  name: missing-file
+  mode: read
+  summary: Repos that do not match any target_patterns (inverse of inventory).
+  params: []
+  example_recipe: recipes/missing-gitlab-ci.yml

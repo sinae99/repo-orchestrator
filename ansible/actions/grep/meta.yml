@@ -1,0 +1,13 @@
+---
+action:
+  name: grep
+  mode: read
+  summary: Matching lines with line numbers across every scanned file.
+  params:
+    - name: pattern
+      required: true
+      description: Regex to search for
+    - name: ignore_case
+      required: false
+      description: Case-insensitive match (default false)
+  example_recipe: recipes/find-latest-image.yml

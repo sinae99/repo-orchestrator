@@ -10,6 +10,9 @@
 - name: Scan | clear previous run reports
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/clear_reports.yml"
 
+- name: Scan | load action metadata
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/../actions/_shared/tasks/load_action_meta.yml"
+
 - name: Scan | ensure workspace exists
   ansible.builtin.stat:
     path: "{{ paths.workspace }}"
@@ -42,6 +45,7 @@
     patterns: "{{ reporker_action.target_patterns }}"
     recurse: true
     file_type: file
+    hidden: true
   loop: "{{ repos }}"
   register: target_find_results
 
@@ -79,30 +83,7 @@
   when:
     - reporker_action.content_grep is defined
     - reporker_action.content_grep | length > 0
-    - not reporker_is_priority_action | bool
-
-- name: Scan | filter to K8s workload manifests for priority actions
-  ansible.builtin.shell: |
-    set -euo pipefail
-    list={{ targets_by_repo[item] | to_json | quote }}
-    count=$(echo "$list" | jq 'length')
-    if [ "$count" -eq 0 ]; then exit 0; fi
-    echo "$list" | jq -r '.[]' | while IFS= read -r f; do
-      if grep -qE '^[[:space:]]*priorityClassName:[[:space:]]*' "$f" 2>/dev/null; then
-        echo "$f"
-        continue
-      fi
-      if grep -qE '^[[:space:]]*kind:[[:space:]]*(Deployment|StatefulSet|DaemonSet|Job|CronJob|Pod)([[:space:]]|$)' "$f" 2>/dev/null; then
-        echo "$f"
-      fi
-    done
-  args:
-    executable: /bin/bash
-  loop: "{{ repos }}"
-  register: _priority_workload_results
-  changed_when: false
-  check_mode: false
-  when: reporker_is_priority_action | bool
+    - reporker_scan_filter | length == 0
 
 - name: Scan | rebuild targets_by_repo to content-matched files only
   ansible.builtin.set_fact:
@@ -116,20 +97,11 @@
   when:
     - reporker_action.content_grep is defined
     - reporker_action.content_grep | length > 0
-    - not reporker_is_priority_action | bool
+    - reporker_scan_filter | length == 0
 
-- name: Scan | rebuild targets_by_repo to workload manifests for priority actions
-  ansible.builtin.set_fact:
-    targets_by_repo: >-
-      {{
-        targets_by_repo | combine({
-          item.item: (item.stdout_lines | map('trim') | reject('equalto', '') | list)
-        })
-      }}
-  loop: "{{ _priority_workload_results.results }}"
-  when:
-    - reporker_is_priority_action | bool
-    - _priority_workload_results is not skipped
+- name: Scan | run optional action scan_filter
+  ansible.builtin.include_tasks: "{{ reporker_scan_filter }}"
+  when: reporker_scan_filter | length > 0
 
 - name: Scan | derive repos_with_targets and repos_without_targets
   ansible.builtin.set_fact:
@@ -147,12 +119,8 @@
           "workspace": paths.workspace,
           "target_patterns": reporker_action.target_patterns,
           "content_grep": reporker_action.content_grep | default(''),
-          "priority_scan": reporker_is_priority_action | bool,
-          "priority_rule": (
-            "missing priorityClassName counts as medium"
-            if reporker_is_priority_action
-            else none
-          ),
+          "scan_filter": (reporker_scan_filter | length > 0),
+          "scan_note": (reporker_scan_note if reporker_scan_note | length > 0 else none),
           "repos_total": repos | length,
           "repos_with_targets": repos_with_targets | length,
           "repos_without_targets": repos_without_targets | length,
@@ -172,14 +140,11 @@
       {{
         (reporker_action.target_patterns | default([]) | join(', ') if (reporker_action.target_patterns | default([]) | length) > 0 else '—')
         + (
-          '  |  grep: ' ~ (reporker_action.content_grep | default(''))
-          if (
-            (reporker_action.content_grep | default('') | length > 0)
-            and not (reporker_is_priority_action | bool)
-          )
+          '  |  ' ~ reporker_scan_note
+          if (reporker_scan_note | length > 0)
           else (
-            '  |  K8s workloads + priorityClassName (missing → medium)'
-            if (reporker_is_priority_action | bool)
+            '  |  grep: ' ~ (reporker_action.content_grep | default(''))
+            if (reporker_action.content_grep | default('') | length > 0)
             else ''
           )
         )

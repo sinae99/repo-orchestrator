@@ -1,0 +1,18 @@
+---
+action:
+  name: priorityclass
+  mode: write
+  summary: Drop medium/low resource requests and ensure priorityClassName on K8s workloads.
+  params:
+    - name: ensure_priority_class
+      required: false
+      description: Class to set when missing (default medium; empty string skips ensure)
+    - name: drop_requests_for
+      required: false
+      description: Priority classes whose container requests are dropped (default medium, low)
+    - name: missing_priority_class
+      required: false
+      description: How to treat manifests without priorityClassName (default medium)
+  scan_filter: tasks/scan_filter.yml
+  scan_note: "K8s workloads + priorityClassName (missing → medium)"
+  example_recipe: recipes/fix-priorityclass.yml

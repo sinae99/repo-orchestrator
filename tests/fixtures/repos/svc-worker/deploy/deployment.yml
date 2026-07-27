@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: svc-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: svc-worker
+  template:
+    metadata:
+      labels:
+        app: svc-worker
+    spec:
+      containers:
+        - name: worker
+          image: registry.example.com/svc-worker:latest
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

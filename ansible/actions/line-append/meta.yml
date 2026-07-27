@@ -1,0 +1,12 @@
+---
+action:
+  name: line-append
+  mode: write
+  summary: Idempotently ensure a line exists in every matched file.
+  params:
+    - name: ensure_line
+      required: true
+      description: Line to insert
+    - name: insertafter
+      required: false
+      description: lineinfile insertafter (default EOF)

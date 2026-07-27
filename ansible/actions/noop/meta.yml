@@ -1,0 +1,6 @@
+---
+action:
+  name: noop
+  mode: read
+  summary: No-op — wiring tests or scan-only dry runs.
+  params: []

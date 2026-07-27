@@ -1,0 +1,17 @@
+---
+# Recipe: rename lowercase dockerfile → Dockerfile (git mv).
+recipe:
+  summary: Rename dockerfile → Dockerfile (preserve suffixes like .prod)
+
+reporker_action:
+  name: rename-file
+  target_patterns:
+    - "dockerfile"
+    - "dockerfile.*"
+  params:
+    from: dockerfile
+    to: Dockerfile
+
+git:
+  branch_name: "rename-dockerfile"
+  commit_message: "fix: rename dockerfile to Dockerfile"

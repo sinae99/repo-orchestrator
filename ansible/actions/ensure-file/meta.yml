@@ -1,0 +1,22 @@
+---
+action:
+  name: ensure-file
+  mode: write
+  summary: Create a standard file in every workspace repo if missing.
+  params:
+    - name: path
+      required: true
+      description: Path inside each repo
+    - name: content
+      required: false
+      description: Literal contents (or use src)
+    - name: src
+      required: false
+      description: Local template file to copy
+    - name: overwrite
+      required: false
+      description: Enforce contents (default false)
+    - name: mode
+      required: false
+      description: File mode (default 0644)
+  example_recipe: recipes/add-codeowners.yml
