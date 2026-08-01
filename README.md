@@ -1,8 +1,8 @@
-# reporker
+# reporker + AI
 
 i kept needing the same thing across a whole GitLab group — find every
-`image: latest`, drop some namespace junk, check who has no `.gitlab-ci.yml`.
-doing that repo by repo with 50–80 services is a joke.
+`image: latest`, check who has no `.something`.
+doing that repo by repo with 50–80 services is not possible.
 
 **reporker** points at a group, takes file patterns + an action, then clones,
 scans, runs your logic, and writes reports. write actions can branch and push.
@@ -23,7 +23,6 @@ AGENTS.md         for ai agents
 recipes/          saved jobs (what to run)
 ansible/actions/  tools (replace, grep, …)
 ansible/          engine + your local config
-tests/            offline fixtures for ./reporker test
 glab/             token + clone list (local only)
 ```
 
@@ -40,8 +39,6 @@ printf '%s' 'glpat-xxx' > glab/token && chmod 600 glab/token
 ./reporker check
 ./reporker list
 ./reporker clone
-./reporker action --recipe bump-python --dry-run
-./reporker action --recipe bump-python
 ./reporker publish
 ```
 
@@ -52,7 +49,6 @@ reports land in `ansible/reports/` — start with `01-summary.txt`.
 ./reporker publish                                  # branch + push
 ```
 
-internal copy (same tree): `git@hamgit.ir:xsinaebrahimi/reporker.git`
 
 ## using it with an ai
 
